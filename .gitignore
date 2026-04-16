@@ -343,5 +343,8 @@ Executables/WeTacoo.Controllers/aws-logger-errors.txt
 /App/WeTacoo.App/Shared/Options/AppOptions.cs
 
 
-# Build output del playground
+# Build output del playground (cartelle per ciascuna piattaforma)
 /playground/dist/
+/playground/dist-win/
+/playground/dist-mac-arm64/
+/playground/dist-mac-x64/
