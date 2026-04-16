@@ -1,0 +1,181 @@
+@inject EntityAdminService Admin
+@inject PlaygroundState State
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6"><MudIcon Icon="@Icons.Material.Filled.Edit" Class="mr-1" />Modifica @(Entity?.GetType().Name ?? "")</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (Entity is null)
+        {
+            <MudAlert Severity="Severity.Error">Entità non trovata.</MudAlert>
+        }
+        else if (_props.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info">Nessun campo editabile per questo tipo.</MudAlert>
+        }
+        else
+        {
+            <MudText Typo="Typo.caption" Class="mb-2">Solo i campi sensati per questo tipo. Riferimenti cross-AR come dropdown.</MudText>
+            <MudSimpleTable Dense="true" Hover="true" Bordered="true" Striped="false">
+                <tbody>
+                    @foreach (var prop in _props)
+                    {
+                        @if (prop.VoSubFields != null)
+                        {
+                            <tr><td colspan="2" style="background:#fff8dc;font-weight:600;font-style:italic;">@prop.Name <span style="font-weight:400;font-size:10px;color:#888">(VO @FriendlyType(prop.Type))</span></td></tr>
+                            foreach (var sub in prop.VoSubFields)
+                            {
+                                <tr>
+                                    <td style="font-family:monospace;padding-left:20px">@sub.Name</td>
+                                    <td>@RenderFieldInput(prop.Name + "." + sub.Name, sub.Type, sub.IsEnum, sub.IsIdRef, sub.IdRefTargetType, sub.CurrentValue)</td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td style="font-family:monospace">@prop.Name</td>
+                                <td>@RenderFieldInput(prop.Name, prop.Type, prop.IsEnum, prop.IsIdRef, prop.IdRefTargetType, prop.CurrentValue)</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Chiudi</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Apply" Disabled="@(Entity is null || _edits.Count == 0)">Applica (@_edits.Count)</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public object? Entity { get; set; }
+
+    private List<EntityAdminService.EditableProperty> _props = new();
+    private Dictionary<string, object?> _edits = new();
+
+    protected override void OnInitialized()
+    {
+        if (Entity != null) _props = Admin.GetEditableProperties(Entity);
+    }
+
+    private RenderFragment RenderFieldInput(string key, Type rawType, bool isEnum, bool isIdRef, string? idTarget, object? currentValue) => __builder =>
+    {
+        var underlying = Nullable.GetUnderlyingType(rawType) ?? rawType;
+
+        // Cross-AR reference → select
+        if (isIdRef && idTarget != null)
+        {
+            var options = Admin.GetArInstancesForSelect(idTarget);
+            var cur = _edits.TryGetValue(key, out var e) ? e as string : (currentValue as string);
+            <MudSelect T="string" Value="@(cur ?? "")" ValueChanged="v => SetEdit(key, v)" Clearable="true" Dense="true" Margin="Margin.Dense">
+                <MudSelectItem T="string" Value="@("")">— nessuno —</MudSelectItem>
+                @foreach (var (id, label) in options)
+                {
+                    <MudSelectItem T="string" Value="@id">@id — @label</MudSelectItem>
+                }
+            </MudSelect>
+            return;
+        }
+
+        // Enum → select
+        if (isEnum)
+        {
+            var cur = _edits.TryGetValue(key, out var e) ? e?.ToString() : currentValue?.ToString();
+            <MudSelect T="string" Value="@(cur ?? "")" ValueChanged="v => SetEdit(key, v)" Dense="true" Margin="Margin.Dense">
+                @foreach (var name in Enum.GetNames(underlying))
+                {
+                    <MudSelectItem T="string" Value="@name">@name</MudSelectItem>
+                }
+            </MudSelect>
+            return;
+        }
+
+        // Bool → switch
+        if (underlying == typeof(bool))
+        {
+            var cur = _edits.TryGetValue(key, out var e)
+                ? (e is bool b ? b : (e?.ToString() == "True" || e?.ToString() == "true"))
+                : (currentValue is bool cb && cb);
+            <MudSwitch T="bool" Value="@cur" ValueChanged="v => SetEdit(key, v)" Color="Color.Primary" />
+            return;
+        }
+
+        // DateTime → date picker
+        if (underlying == typeof(DateTime))
+        {
+            DateTime? cur = _edits.TryGetValue(key, out var e)
+                ? (e as DateTime?) ?? (e is string s && DateTime.TryParse(s, out var d) ? d : null)
+                : (currentValue as DateTime?);
+            <MudDatePicker Date="@cur" DateChanged="v => SetEdit(key, v)" Clearable="true" Margin="Margin.Dense" />
+            return;
+        }
+
+        // Numeric → numeric field
+        if (underlying == typeof(int) || underlying == typeof(long))
+        {
+            var curStr = (_edits.TryGetValue(key, out var e) ? e?.ToString() : currentValue?.ToString()) ?? "";
+            <MudTextField T="string" Value="@curStr" ValueChanged="v => SetEdit(key, v)" InputType="InputType.Number" Margin="Margin.Dense" />
+            return;
+        }
+        if (underlying == typeof(decimal) || underlying == typeof(double) || underlying == typeof(float))
+        {
+            var curStr = (_edits.TryGetValue(key, out var e) ? e?.ToString() : currentValue?.ToString()) ?? "";
+            <MudTextField T="string" Value="@curStr" ValueChanged="v => SetEdit(key, v)" InputType="InputType.Number" Margin="Margin.Dense" />
+            return;
+        }
+
+        // String default
+        {
+            var curStr = (_edits.TryGetValue(key, out var e) ? e?.ToString() : currentValue?.ToString()) ?? "";
+            <MudTextField T="string" Value="@curStr" ValueChanged="v => SetEdit(key, v)" Margin="Margin.Dense" />
+        }
+    };
+
+    private void SetEdit(string key, object? value) => _edits[key] = value;
+
+    private string FriendlyType(Type t)
+    {
+        var u = Nullable.GetUnderlyingType(t);
+        return u != null ? $"{u.Name}?" : t.Name;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Apply()
+    {
+        if (Entity == null) return;
+
+        // Group VO sub-field edits by their top-level VO name
+        var voGroups = new Dictionary<string, Dictionary<string, object?>>();
+        var topLevelEdits = new Dictionary<string, object?>();
+        foreach (var (key, val) in _edits)
+        {
+            var dot = key.IndexOf('.');
+            if (dot >= 0)
+            {
+                var voName = key[..dot];
+                var sub = key[(dot + 1)..];
+                if (!voGroups.ContainsKey(voName)) voGroups[voName] = new();
+                voGroups[voName][sub] = val;
+            }
+            else topLevelEdits[key] = val;
+        }
+
+        foreach (var (name, val) in topLevelEdits)
+        {
+            try { Admin.ForceUpdate(Entity, name, val is string s ? s : val?.ToString()); }
+            catch { }
+        }
+        foreach (var (voName, subs) in voGroups)
+        {
+            try { Admin.ForceUpdateVo(Entity, voName, subs); }
+            catch { }
+        }
+        State.NotifyStateChanged();
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+}

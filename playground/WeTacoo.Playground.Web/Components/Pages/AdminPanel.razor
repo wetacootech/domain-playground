@@ -1,0 +1,160 @@
+@page "/admin"
+@using WeTacoo.Domain.Commercial
+@using WeTacoo.Domain.Commercial.Entities
+@using WeTacoo.Domain.Operational
+@using WeTacoo.Domain.Operational.Entities
+@using WeTacoo.Domain.Execution
+@using WeTacoo.Domain.Financial
+@using WeTacoo.Domain.Identity
+@using WeTacoo.Domain.Marketing
+@using WeTacoo.Domain.Happiness
+@using WeTacoo.Domain.SharedInfrastructure
+@inject PlaygroundState State
+@inject EntityAdminService Admin
+@inject IDialogService DialogService
+@implements IDisposable
+
+<PageTitle>Admin Playground</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-2"><MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Class="mr-1" />Admin — CRUD forzato</MudText>
+<MudAlert Severity="Severity.Warning" Dense="true" Class="mb-4">Bypass totale delle guardie di dominio. Ogni entità può essere modificata (reflection) o eliminata (hard delete con cascata). Usa con criterio.</MudAlert>
+
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-3" KeepPanelsAlive="false">
+
+    <MudTabPanel Text="Commercial">
+        <MudExpansionPanels MultiExpansion="true">
+            @Section("Leads", State.Leads.Cast<object>().ToList(), "Lead", o => new[] { ((Lead)o).Id }, o => { var x = (Lead)o; return $"{x.Personal.FirstName} {x.Personal.LastName} — {x.Status}"; })
+            @Section("Deals", State.Deals.Cast<object>().ToList(), "Deal", o => new[] { ((Deal)o).Id }, o => { var x = (Deal)o; return $"{x.Type} — {x.Status} — {x.Quotations.Count} quot"; })
+            @NestedSection("Quotations", State.Deals.SelectMany(d => d.Quotations.Select(q => (object)new object[] { d, q })).ToList(), "Quotation",
+                o => { var a = (object[])o; return new[] { ((Deal)a[0]).Id, ((Quotation)a[1]).Id }; },
+                o => { var a = (object[])o; return ((Quotation)a[1]).Id; },
+                o => { var a = (object[])o; return $"{((Quotation)a[1]).Status} — deal {((Deal)a[0]).Id}"; },
+                o => ((object[])o)[1])
+            @NestedSection("ServiceBooked", State.Deals.SelectMany(d => d.Quotations.SelectMany(q => q.Services.Select(s => (object)new object[] { d, q, s }))).ToList(), "ServiceBooked",
+                o => { var a = (object[])o; return new[] { ((Deal)a[0]).Id, ((Quotation)a[1]).Id, ((ServiceBooked)a[2]).Id }; },
+                o => { var a = (object[])o; return ((ServiceBooked)a[2]).Id; },
+                o => { var a = (object[])o; var s = (ServiceBooked)a[2]; return $"{s.Type} — {s.Status} — {((Deal)a[0]).Id}/{((Quotation)a[1]).Id}"; },
+                o => ((object[])o)[2])
+            @Section("Questionnaires", State.Questionnaires.Cast<object>().ToList(), "Questionnaire", o => new[] { ((Questionnaire)o).Id }, o => { var x = (Questionnaire)o; return $"{x.Questions.Count} dom. — {(x.IsVerified ? "verificato" : "draft")}"; })
+            @Section("ProductTemplates", State.ProductTemplates.Cast<object>().ToList(), "ProductTemplate", o => new[] { ((ProductTemplate)o).Id }, o => { var x = (ProductTemplate)o; return $"{x.Name} — {x.BasePrice:C} — {x.ProductType}"; })
+            @Section("QuestionTemplates", State.QuestionTemplates.Cast<object>().ToList(), "QuestionTemplate", o => new[] { ((QuestionTemplate)o).Id }, o => ((QuestionTemplate)o).Question)
+            @Section("Coupons", State.Coupons.Cast<object>().ToList(), "Coupon", o => new[] { ((Coupon)o).Id }, o => { var x = (Coupon)o; return $"{x.Code} — {x.DiscountPercent}% — {(x.IsActive ? "attivo" : "inattivo")}"; })
+            @Section("Salesmen", State.Salesmen.Cast<object>().ToList(), "Salesman", o => new[] { ((Salesman)o).Id }, o => ((Salesman)o).FullName)
+        </MudExpansionPanels>
+    </MudTabPanel>
+
+    <MudTabPanel Text="Operational">
+        <MudExpansionPanels MultiExpansion="true">
+            @Section("WorkOrders", State.WorkOrders.Cast<object>().ToList(), "WorkOrder", o => new[] { ((WorkOrder)o).Id }, o => { var x = (WorkOrder)o; return $"{x.Type} — {x.ServiceType?.Type} — {x.Status}"; })
+            @Section("Inspections", State.Inspections.Cast<object>().ToList(), "Inspection", o => new[] { ((Inspection)o).Id }, o => { var x = (Inspection)o; return $"{x.Status} — svc {x.ServiceBookedId}"; })
+            @Section("Plannings", State.Plannings.Cast<object>().ToList(), "Planning", o => new[] { ((Planning)o).Id }, o => { var x = (Planning)o; return $"{x.Date:dd/MM} — {x.Missions.Count} mission, {x.Teams.Count} team"; })
+            @NestedSection("Missions", State.Plannings.SelectMany(p => p.Missions.Select(m => (object)new object[] { p, m })).ToList(), "Mission",
+                o => { var a = (object[])o; return new[] { ((Planning)a[0]).Id, ((Mission)a[1]).Id }; },
+                o => { var a = (object[])o; return ((Mission)a[1]).Id; },
+                o => { var a = (object[])o; return $"{((Mission)a[1]).ServiceRefs.Count} refs — planning {((Planning)a[0]).Id}"; },
+                o => ((object[])o)[1])
+            @Section("Slots", State.Slots.Cast<object>().ToList(), "Slot", o => new[] { ((Slot)o).Id }, o => { var x = (Slot)o; return $"{x.Date:dd/MM} {x.TimeStart}-{x.TimeEnd} — wh {x.WarehouseId}"; })
+            @Section("Warehouses", State.Warehouses.Cast<object>().ToList(), "Warehouse", o => new[] { ((Warehouse)o).Id }, o => { var x = (Warehouse)o; return $"{x.Name} — cap {x.Capacity}"; })
+            @Section("Vehicles", State.Vehicles.Cast<object>().ToList(), "Vehicle", o => new[] { ((Vehicle)o).Id }, o => { var x = (Vehicle)o; return $"{x.Name} — {x.Plate}"; })
+            @Section("Assets", State.Assets.Cast<object>().ToList(), "Asset", o => new[] { ((Asset)o).Id }, o => { var x = (Asset)o; return $"{x.Name} — {x.AssetType} — {x.Status}"; })
+            @Section("Operators", State.Operators.Cast<object>().ToList(), "Operator", o => new[] { ((Operator)o).Id }, o => { var x = (Operator)o; return $"{x.FullName} — {x.Status}"; })
+        </MudExpansionPanels>
+    </MudTabPanel>
+
+    <MudTabPanel Text="Execution">
+        <MudExpansionPanels MultiExpansion="true">
+            @Section("Shifts", State.Shifts.Cast<object>().ToList(), "Shift", o => new[] { ((Shift)o).Id }, o => { var x = (Shift)o; return $"{x.Date:dd/MM} — {x.Status} — mission {x.MissionId}"; })
+            @Section("PhysicalObjects", State.Objects.Cast<object>().ToList(), "PhysicalObject", o => new[] { ((PhysicalObject)o).Id }, o => { var x = (PhysicalObject)o; return $"{x.Name} — {x.Status} — deal {x.DealId}"; })
+            @Section("Pallets", State.Pallets.Cast<object>().ToList(), "Pallet", o => new[] { ((Pallet)o).Id }, o => { var x = (Pallet)o; return $"{x.Name} — {x.Status} — {x.ObjectIds.Count} obj"; })
+            @Section("ObjectGroups", State.ObjectGroups.Cast<object>().ToList(), "ObjectGroup", o => new[] { ((ObjectGroup)o).Id }, o => { var x = (ObjectGroup)o; return $"{x.Name} — {x.ObjectIds.Count} obj"; })
+            @Section("WarehouseOperations", State.WarehouseOperations.Cast<object>().ToList(), "WarehouseOperation", o => new[] { ((WarehouseOperation)o).Id }, o => { var x = (WarehouseOperation)o; return $"{x.OperationType} — {x.Status} — wh {x.WarehouseId}"; })
+            @Section("VehicleOperations", State.VehicleOperations.Cast<object>().ToList(), "VehicleOperation", o => new[] { ((VehicleOperation)o).Id }, o => { var x = (VehicleOperation)o; return $"{x.Type} — {x.Status} — veh {x.VehicleId}"; })
+            @Section("Labels", State.Labels.Cast<object>().ToList(), "Label", o => new[] { ((Label)o).Id }, o => ((Label)o).Id)
+        </MudExpansionPanels>
+    </MudTabPanel>
+
+    <MudTabPanel Text="Financial">
+        <MudExpansionPanels MultiExpansion="true">
+            @Section("Payments", State.Payments.Cast<object>().ToList(), "Payment", o => new[] { ((Payment)o).Id }, o => { var x = (Payment)o; return $"deal {x.DealId} — {x.Charges.Count} charges"; })
+            @Section("FinancialClients", State.FinancialClients.Cast<object>().ToList(), "FinancialClient", o => new[] { ((FinancialClient)o).Id }, o => ((FinancialClient)o).Id)
+        </MudExpansionPanels>
+    </MudTabPanel>
+
+    <MudTabPanel Text="Identity/MK/HX">
+        <MudExpansionPanels MultiExpansion="true">
+            @Section("Users", State.Users.Cast<object>().ToList(), "User", o => new[] { ((User)o).Id }, o => { var x = (User)o; return $"{x.Email} — {x.Role}"; })
+            @Section("MarketingClients", State.MarketingClients.Cast<object>().ToList(), "MarketingClient", o => new[] { ((MarketingClient)o).Id }, o => { var x = (MarketingClient)o; return $"lead {x.CommercialLeadId} — {x.FunnelStep}"; })
+            @Section("HappinessClients", State.HappinessClients.Cast<object>().ToList(), "HappinessClient", o => new[] { ((HappinessClient)o).Id }, o => ((HappinessClient)o).Id)
+        </MudExpansionPanels>
+    </MudTabPanel>
+
+    <MudTabPanel Text="Shared">
+        <MudExpansionPanels MultiExpansion="true">
+            @Section("Areas", State.Areas.Cast<object>().ToList(), "Area", o => new[] { ((Area)o).Id }, o => { var x = (Area)o; return $"{x.Name} — {x.City}"; })
+            @Section("ObjectTemplates", State.ObjectTemplates.Cast<object>().ToList(), "ObjectTemplate", o => new[] { ((ObjectTemplate)o).Id }, o => { var x = (ObjectTemplate)o; return $"{x.Name} — {x.DefaultVolume}m³"; })
+            @Section("Emails", State.Emails.Cast<object>().ToList(), "Email", o => new[] { ((WeTacoo.Domain.SharedInfrastructure.Email)o).Id }, o => { var x = (WeTacoo.Domain.SharedInfrastructure.Email)o; return $"{x.Subject} → {x.To} — {x.Status}"; })
+        </MudExpansionPanels>
+    </MudTabPanel>
+
+</MudTabs>
+
+@code {
+    private Action _onStateChanged = null!;
+
+    protected override void OnInitialized()
+    {
+        _onStateChanged = () => InvokeAsync(StateHasChanged);
+        State.OnStateChanged += _onStateChanged;
+    }
+    public void Dispose() => State.OnStateChanged -= _onStateChanged;
+
+    private RenderFragment Section(string title, List<object> items, string kind, Func<object, string[]> idsSel, Func<object, string> labelSel) =>
+        @<MudExpansionPanel Text="@($"{title} ({items.Count})")">
+            @if (items.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Vuoto.</MudText>
+            }
+            else
+            {
+                <MudSimpleTable Dense="true" Hover="true" Bordered="false" Striped="true">
+                    <thead><tr><th style="width:120px">ID</th><th>Dettagli</th><th style="width:120px; text-align:right">Azioni</th></tr></thead>
+                    <tbody>
+                    @foreach (var item in items)
+                    {
+                        var ids = idsSel(item);
+                        <tr>
+                            <td style="font-family:monospace">@ids[0]</td>
+                            <td>@labelSel(item)</td>
+                            <td style="text-align:right"><EntityActions Kind="@kind" Ids="@ids" Entity="item" OnChanged="StateHasChanged" /></td>
+                        </tr>
+                    }
+                    </tbody>
+                </MudSimpleTable>
+            }
+        </MudExpansionPanel>;
+
+    private RenderFragment NestedSection(string title, List<object> items, string kind, Func<object, string[]> idsSel, Func<object, string> idSel, Func<object, string> labelSel, Func<object, object> entitySel) =>
+        @<MudExpansionPanel Text="@($"{title} ({items.Count})")">
+            @if (items.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Vuoto.</MudText>
+            }
+            else
+            {
+                <MudSimpleTable Dense="true" Hover="true" Bordered="false" Striped="true">
+                    <thead><tr><th style="width:120px">ID</th><th>Dettagli</th><th style="width:120px; text-align:right">Azioni</th></tr></thead>
+                    <tbody>
+                    @foreach (var item in items)
+                    {
+                        var ids = idsSel(item);
+                        <tr>
+                            <td style="font-family:monospace">@idSel(item)</td>
+                            <td>@labelSel(item)</td>
+                            <td style="text-align:right"><EntityActions Kind="@kind" Ids="@ids" Entity="entitySel(item)" OnChanged="StateHasChanged" /></td>
+                        </tr>
+                    }
+                    </tbody>
+                </MudSimpleTable>
+            }
+        </MudExpansionPanel>;
+}

@@ -1,0 +1,190 @@
+@page "/scenarios"
+@inject PlaygroundState State
+@inject ScenarioEngine Engine
+@inject ISnackbar Snackbar
+
+<PageTitle>Scenari</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-2">Scenari Interattivi</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">Esegui scenari step-by-step per vedere le interazioni tra i Bounded Context.</MudText>
+
+<MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="ResetAll" Class="mb-4" StartIcon="@Icons.Material.Filled.RestartAlt">Reset Completo</MudButton>
+
+@foreach (var scenario in _scenarios)
+{
+    <MudExpansionPanels Class="mb-4" Elevation="2">
+        <MudExpansionPanel Text="@scenario.Key" MaxHeight="2000">
+            <MudTimeline TimelineOrientation="TimelineOrientation.Vertical" TimelinePosition="TimelinePosition.Start">
+                @{ int stepIdx = 0; }
+                @foreach (var step in scenario.Value)
+                {
+                    var idx = stepIdx;
+                    var isCompleted = _completedSteps.Contains($"{scenario.Key}_{idx}");
+                    var isNext = !isCompleted && (idx == 0 || _completedSteps.Contains($"{scenario.Key}_{idx - 1}"));
+                    <MudTimelineItem Color="@(isCompleted ? Color.Success : isNext ? Color.Primary : Color.Default)"
+                                     Variant="Variant.Filled" Size="Size.Medium">
+                        <ItemContent>
+                            <MudCard Elevation="@(isNext ? 3 : 1)" Class="@(isNext ? "mud-border-primary" : "")">
+                                <MudCardContent>
+                                    <div class="d-flex align-center gap-2">
+                                        <MudChip T="string" Size="Size.Small" Color="@GetBCColor(step.BC)">@step.BC</MudChip>
+                                        <MudText Typo="Typo.subtitle1"><b>@step.Name</b></MudText>
+                                    </div>
+                                    <MudText Typo="Typo.body2" Class="mt-1">@step.Description</MudText>
+                                </MudCardContent>
+                                <MudCardActions>
+                                    @if (isNext && !_running)
+                                    {
+                                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                                   OnClick="@(() => ExecuteStep(scenario.Key, idx, step))"
+                                                   StartIcon="@Icons.Material.Filled.PlayArrow">Esegui</MudButton>
+                                    }
+                                    else if (isCompleted)
+                                    {
+                                        <MudChip T="string" Color="Color.Success" Size="Size.Small" Icon="@Icons.Material.Filled.Check">Completato</MudChip>
+                                    }
+                                </MudCardActions>
+                            </MudCard>
+                            @if (step.BranchPointNote != null)
+                            {
+                                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2" NoIcon="false" Icon="@Icons.Material.Filled.CallSplit">
+                                    <MudText Typo="Typo.body2"><b>⚠ Punto di biforcazione (fine parte deterministica dell'UC).</b></MudText>
+                                    <MudText Typo="Typo.caption">@step.BranchPointNote</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">Per testare un outcome diverso, ferma lo scenario qui e prosegui dal Workspace.</MudText>
+                                </MudAlert>
+                            }
+                        </ItemContent>
+                    </MudTimelineItem>
+                    stepIdx++;
+                }
+            </MudTimeline>
+
+            @{
+                var branchPointIdx = scenario.Value.FindIndex(s => s.BranchPointNote != null);
+            }
+            <div class="d-flex gap-2 mt-2">
+                <MudButton Variant="Variant.Filled" Color="Color.Warning"
+                           OnClick="@(() => RunAll(scenario.Key, scenario.Value))"
+                           Disabled="_running"
+                           StartIcon="@Icons.Material.Filled.FastForward">Esegui Tutto</MudButton>
+                @if (branchPointIdx >= 0)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Warning"
+                               OnClick="@(() => RunUpTo(scenario.Key, scenario.Value, branchPointIdx))"
+                               Disabled="_running"
+                               StartIcon="@Icons.Material.Filled.Stop">Esegui fino al punto di scelta (step @(branchPointIdx + 1))</MudButton>
+                }
+            </div>
+        </MudExpansionPanel>
+    </MudExpansionPanels>
+}
+
+@code {
+    private Dictionary<string, List<ScenarioStep>> _scenarios = new();
+    private string? _activeScenario;
+    // Tracking step persistente cross-navigazione (mantenuto in PlaygroundState, resetta solo con comando manuale)
+    private HashSet<string> _completedSteps => State.CompletedScenarioSteps;
+    private bool _running;
+    private string? _error;
+
+    protected override void OnInitialized()
+    {
+        // Cache degli scenari in PlaygroundState: preserva le closure locali (lead/deal/wo/ecc.)
+        // Se ci si muove tra pagine e si torna qui, si continuano gli step usando le stesse reference
+        // invece di ricreare tutto (perdendo lo stato catturato nei delegate).
+        if (State.CachedScenarios == null)
+            State.CachedScenarios = Engine.GetAllScenarios();
+        _scenarios = State.CachedScenarios;
+    }
+
+    private async Task ExecuteStep(string scenarioKey, int idx, ScenarioStep step)
+    {
+        _running = true;
+        _error = null;
+        _activeScenario = scenarioKey;
+        try
+        {
+            await InvokeAsync(async () =>
+            {
+                await step.Execute();
+                _completedSteps.Add($"{scenarioKey}_{idx}");
+                SyncSelectedLeadToScenario();
+                Snackbar.Add($"Step completato: {step.Name}", Severity.Success);
+            });
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+        _running = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Dopo ogni step, se lo scenario ha creato lead con deal, aggiorna SelectedLeadId per far vedere l'entita' appena creata nel Workspace.</summary>
+    private void SyncSelectedLeadToScenario()
+    {
+        var lastLeadWithDeal = State.Leads.LastOrDefault(l => l.DealIds.Count > 0);
+        if (lastLeadWithDeal != null) State.SelectedLeadId = lastLeadWithDeal.Id;
+    }
+
+    private async Task RunAll(string scenarioKey, List<ScenarioStep> steps)
+        => await RunRange(scenarioKey, steps, steps.Count - 1);
+
+    private async Task RunUpTo(string scenarioKey, List<ScenarioStep> steps, int lastIdx)
+        => await RunRange(scenarioKey, steps, lastIdx);
+
+    private async Task RunRange(string scenarioKey, List<ScenarioStep> steps, int lastIdx)
+    {
+        _running = true;
+        _activeScenario = scenarioKey;
+        await InvokeAsync(StateHasChanged);
+        for (int i = 0; i <= lastIdx; i++)
+        {
+            var key = $"{scenarioKey}_{i}";
+            if (_completedSteps.Contains(key)) continue;
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    await steps[i].Execute();
+                    _completedSteps.Add(key);
+                    SyncSelectedLeadToScenario();
+                    StateHasChanged();
+                });
+                await Task.Delay(300);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Errore allo step {i + 1}: {ex.Message}", Severity.Error);
+                break;
+            }
+        }
+        _running = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ResetAll()
+    {
+        State.Reset();
+        // State.Reset gia' azzera CompletedScenarioSteps e CachedScenarios — ricreiamo le closure fresche
+        State.CachedScenarios = Engine.GetAllScenarios();
+        _scenarios = State.CachedScenarios;
+        _activeScenario = null;
+        Snackbar.Add("Playground resettato", Severity.Info);
+    }
+
+    private Color GetBCColor(string bc) => bc switch
+    {
+        "Commercial" => Color.Primary,
+        "Operational" => Color.Warning,
+        "Execution" => Color.Success,
+        "Financial" => Color.Error,
+        "SharedKernel" => Color.Info,
+        "Identity" => Color.Dark,
+        "Marketing" => Color.Secondary,
+        "Happiness" => Color.Tertiary,
+        "Setup" => Color.Dark,
+        _ => Color.Default
+    };
+}

@@ -1,0 +1,38 @@
+@inject EntityAdminService Admin
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6"><MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Error" Class="mr-1" />Elimina @Kind</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudAlert Severity="Severity.Warning" Class="mb-2">Hard delete. Le entità referenziate vengono eliminate a cascata. Operazione irreversibile.</MudAlert>
+        <MudText Typo="Typo.body2" Class="mb-1"><b>Verranno eliminati:</b></MudText>
+        <MudPaper Class="pa-2" Outlined="true" Style="max-height:300px; overflow-y:auto; font-family:monospace; font-size:12px; white-space:pre-wrap;">@string.Join("\n", _preview)</MudPaper>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Annulla</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="Confirm" StartIcon="@Icons.Material.Filled.Delete">Elimina</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public string Kind { get; set; } = "";
+    [Parameter] public string[] Ids { get; set; } = [];
+
+    private List<string> _preview = [];
+
+    protected override void OnInitialized()
+    {
+        _preview = Admin.PreviewCascade(Kind, Ids);
+        if (_preview.Count == 0) _preview = [$"{Kind} {string.Join("/", Ids)}"];
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Confirm()
+    {
+        Admin.Delete(Kind, Ids);
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+}

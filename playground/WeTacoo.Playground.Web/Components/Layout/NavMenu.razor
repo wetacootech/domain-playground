@@ -1,0 +1,23 @@
+@inject PlaygroundState State
+
+<MudNavMenu>
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Hub">Workspace</MudNavLink>
+    <MudNavLink Href="/admin" Icon="@Icons.Material.Filled.AdminPanelSettings">Admin (CRUD)</MudNavLink>
+    <MudNavLink Href="/scenarios" Icon="@Icons.Material.Filled.PlayCircle">Scenari</MudNavLink>
+    <MudNavLink Href="/events" Icon="@Icons.Material.Filled.Timeline">Event Log</MudNavLink>
+    <MudNavLink Href="/glossary" Icon="@Icons.Material.Filled.MenuBook">Glossario</MudNavLink>
+
+    <MudDivider Class="my-2" />
+    <MudNavLink Href="/bc/schema" Icon="@Icons.Material.Filled.AccountTree">Schema Dominio</MudNavLink>
+    <MudNavLink Href="/bc/instances" Icon="@Icons.Material.Filled.DataObject">Schema Istanze</MudNavLink>
+    <MudNavGroup Title="Ispeziona BC" Icon="@Icons.Material.Filled.Search" Expanded="false">
+        <MudNavLink Href="/bc/commercial" Icon="@Icons.Material.Filled.Store">Commercial</MudNavLink>
+        <MudNavLink Href="/bc/operational" Icon="@Icons.Material.Filled.Engineering">Operational</MudNavLink>
+        <MudNavLink Href="/bc/execution" Icon="@Icons.Material.Filled.LocalShipping">Execution</MudNavLink>
+        <MudNavLink Href="/bc/financial" Icon="@Icons.Material.Filled.Payment">Financial</MudNavLink>
+        <MudNavLink Href="/bc/identity" Icon="@Icons.Material.Filled.Person">Identity</MudNavLink>
+        <MudNavLink Href="/bc/marketing" Icon="@Icons.Material.Filled.Campaign">Marketing</MudNavLink>
+        <MudNavLink Href="/bc/happiness" Icon="@Icons.Material.Filled.SentimentSatisfied">Happiness</MudNavLink>
+        <MudNavLink Href="/bc/shared" Icon="@Icons.Material.Filled.Folder">SharedInfrastructure</MudNavLink>
+    </MudNavGroup>
+</MudNavMenu>

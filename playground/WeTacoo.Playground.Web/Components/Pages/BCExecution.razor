@@ -1,0 +1,229 @@
+﻿@page "/bc/execution"
+@using WeTacoo.Domain.Execution
+@using WeTacoo.Domain.Execution.Enums
+@using WeTacoo.Domain.Operational.Enums
+@inject PlaygroundState State
+@implements IDisposable
+
+<PageTitle>Execution BC</PageTitle>
+<MudText Typo="Typo.h4" Class="mb-2">Execution BC</MudText>
+<MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">Pagina di sola lettura. Avvia/Simula/Completa Shift, movimenti oggetti e operazioni magazzino si fanno dal <b>Workspace</b>.</MudAlert>
+
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+    <MudTabPanel Text="@($"Shifts ({State.Shifts.Count})")">
+        @if (State.Shifts.Count == 0) { <MudAlert Severity="Severity.Info">Nessuno Shift.</MudAlert> }
+        else
+        {
+            @foreach (var s in State.Shifts)
+            {
+                <MudCard Class="mb-3" Elevation="2">
+                    <MudCardContent>
+                        <div class="d-flex align-center gap-2 mb-2">
+                            <MudText Typo="Typo.h6">Shift @s.Id</MudText>
+                            <MudChip T="string" Size="Size.Small" Color="@ShiftColor(s.Status)">@s.Status</MudChip>
+                            @if (s.IsAutonomous) { <MudChip T="string" Size="Size.Small" Color="Color.Info">Autonomo</MudChip> }
+                            <MudSpacer />
+                            <EntityActions Kind="Shift" Ids="@(new[] { s.Id })" Entity="s" OnChanged="StateHasChanged" />
+                        </div>
+                        <MudText Typo="Typo.body2">Date: @s.Date.ToString("dd/MM/yyyy") | Mission: @(s.MissionId ?? "Unplanned")</MudText>
+                        @if (s.Mission != null)
+                        {
+                            <MudText Typo="Typo.body2">Team: @string.Join(", ", s.Mission.Operators) | Vehicles: @string.Join(", ", s.Mission.Vehicles)</MudText>
+                        }
+
+                        <MudText Typo="Typo.subtitle2" Class="mt-3">Service Entries (@s.ServiceEntries.Count) — Entity dentro Shift</MudText>
+                        <MudTable Items="s.ServiceEntries" Dense="true" Elevation="0">
+                            <HeaderContent><MudTh>ID</MudTh><MudTh>Service</MudTh><MudTh>Type</MudTh><MudTh>State</MudTh><MudTh>WO Status</MudTh><MudTh>Client</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.Id</MudTd><MudTd>@context.ServiceId</MudTd><MudTd>@context.Type</MudTd>
+                                <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.Completed ? Color.Success : Color.Default)">@(context.Completed ? "Completed" : "Da fare")</MudChip></MudTd>
+                                <MudTd>
+                                    @{ var woForEntry = State.WorkOrders.FirstOrDefault(w => w.Id == context.ServiceId); }
+                                    @if (woForEntry != null) { <MudChip T="string" Size="Size.Small" Color="@WOColor(woForEntry.Status)">@woForEntry.Status</MudChip> }
+                                    else { <MudText Typo="Typo.body2">-</MudText> }
+                                </MudTd>
+                                <MudTd>@(context.ClientInfo?.ClientName ?? "-")</MudTd>
+                                <MudTd><EntityActions Kind="ServiceEntry" Ids="@(new[] { s.Id, context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                            </RowTemplate>
+                        </MudTable>
+
+                        <MudText Typo="Typo.subtitle2" Class="mt-3">Tasks (@s.Tasks.Count) — Entity dentro Shift</MudText>
+                        <MudTable Items="s.Tasks" Dense="true" Elevation="0">
+                            <HeaderContent><MudTh>ID</MudTh><MudTh>Type</MudTh><MudTh>Extra</MudTh><MudTh>Objects</MudTh><MudTh>ServiceEntry</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.Id</MudTd>
+                                <MudTd>@context.Type</MudTd><MudTd>@(context.IsExtra ? "Yes" : "No")</MudTd>
+                                <MudTd>@context.ObjectIds.Count</MudTd><MudTd>@(context.ServiceEntryId ?? "-")</MudTd>
+                                <MudTd><EntityActions Kind="Task" Ids="@(new[] { s.Id, context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudCardContent>
+                </MudCard>
+            }
+        }
+    </MudTabPanel>
+
+    <MudTabPanel Text="@($"Objects ({State.Objects.Count})")">
+        @if (State.Objects.Count == 0) { <MudAlert Severity="Severity.Info">Nessun oggetto fisico.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.Objects" Dense="true" Hover="true" Striped="true">
+                <HeaderContent>
+                    <MudTh>ID</MudTh><MudTh>Name</MudTh><MudTh>Volume</MudTh><MudTh>Status</MudTh><MudTh>Label</MudTh><MudTh>Deal</MudTh><MudTh>Position</MudTh><MudTh>Reserved</MudTh><MudTh>History</MudTh><MudTh>Azioni</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd>
+                    <MudTd>@context.Name</MudTd>
+                    <MudTd>@($"{context.Volume:F1} m3")</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="@ObjColor(context.Status.ToString())">@context.Status</MudChip></MudTd>
+                    <MudTd>@context.LabelId</MudTd>
+                    <MudTd>@context.DealId</MudTd>
+                    <MudTd>@(context.Position?.WarehouseId ?? "-")</MudTd>
+                    <MudTd>@(context.ReservedByQuotationId ?? "-")</MudTd>
+                    <MudTd>@context.History.Count moves</MudTd>
+                    <MudTd><EntityActions Kind="PhysicalObject" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            @foreach (var obj in State.Objects.Where(o => o.History.Count > 0))
+            {
+                <MudExpansionPanels Class="mt-2">
+                    <MudExpansionPanel Text="@($"Storico {obj.Name} ({obj.Id})")">
+                        <MudTimeline TimelineOrientation="TimelineOrientation.Vertical" TimelinePosition="TimelinePosition.Start">
+                            @foreach (var snap in obj.History)
+                            {
+                                <MudTimelineItem Size="Size.Small" Color="@ObjColor(snap.Status.ToString())">
+                                    <MudText Typo="Typo.body2">@snap.Timestamp.ToString("HH:mm:ss") — @snap.Status @(snap.Notes != null ? $"— {snap.Notes}" : "")</MudText>
+                                </MudTimelineItem>
+                            }
+                        </MudTimeline>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            }
+        }
+    </MudTabPanel>
+
+    <MudTabPanel Text="@($"Warehouse Ops ({State.WarehouseOperations.Count})")">
+        <MudTable Items="State.WarehouseOperations" Dense="true" Hover="true">
+            <HeaderContent><MudTh>ID</MudTh><MudTh>Type</MudTh><MudTh>Warehouse</MudTh><MudTh>Status</MudTh><MudTh>Objects</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Id</MudTd><MudTd>@context.OperationType</MudTd><MudTd>@context.WarehouseId</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.Status == "Completed" ? Color.Success : Color.Warning)">@context.Status</MudChip></MudTd>
+                <MudTd>@context.ObjectIds.Count</MudTd>
+                <MudTd><EntityActions Kind="WarehouseOperation" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudTabPanel>
+
+    <MudTabPanel Text="@($"Labels ({State.Labels.Count})")">
+        <MudTable Items="State.Labels" Dense="true" Hover="true">
+            <HeaderContent><MudTh>ID</MudTh><MudTh>Code</MudTh><MudTh>City</MudTh><MudTh>Status</MudTh><MudTh>Referral</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Id</MudTd><MudTd>@context.Code</MudTd><MudTd>@context.City</MudTd><MudTd>@context.Status</MudTd><MudTd>@(context.IsReferral ? "Yes" : "No")</MudTd>
+                <MudTd><EntityActions Kind="Label" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudTabPanel>
+
+    @* ══════════════ Pallets (AR — DDD5 §5.6) ══════════════ *@
+    <MudTabPanel Text="@($"Pallets ({State.Pallets.Count})")">
+        @if (State.Pallets.Count == 0) { <MudAlert Severity="Severity.Info">Nessun pallet.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.Pallets" Dense="true" Hover="true">
+                <HeaderContent><MudTh>ID</MudTh><MudTh>Nome</MudTh><MudTh>Status</MudTh><MudTh>Posizione</MudTh><MudTh>Oggetti</MudTh><MudTh>Label</MudTh><MudTh>Deal</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd><MudTd>@context.Name</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="@ObjColor(context.Status.ToString())">@context.Status</MudChip></MudTd>
+                    <MudTd>@(context.Position?.WarehouseId ?? "—")</MudTd>
+                    <MudTd>@context.ObjectIds.Count</MudTd>
+                    <MudTd>@(context.LabelId ?? "—")</MudTd>
+                    <MudTd>@(context.DealId ?? "—")</MudTd>
+                    <MudTd><EntityActions Kind="Pallet" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+
+    @* ══════════════ VehicleOperations (AR — DDD5 §5.3) ══════════════ *@
+    <MudTabPanel Text="@($"VehicleOps ({State.VehicleOperations.Count})")">
+        @if (State.VehicleOperations.Count == 0) { <MudAlert Severity="Severity.Info">Nessuna operazione veicolo.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.VehicleOperations" Dense="true" Hover="true">
+                <HeaderContent><MudTh>ID</MudTh><MudTh>Vehicle</MudTh><MudTh>Tipo</MudTh><MudTh>Status</MudTh><MudTh>Inizio</MudTh><MudTh>Fine</MudTh><MudTh>Operatori</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd><MudTd>@context.VehicleId</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small">@context.Type</MudChip></MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.Status=="Completed"?Color.Success:Color.Warning)">@context.Status</MudChip></MudTd>
+                    <MudTd>@(context.StartTime?.ToString("dd/MM HH:mm") ?? "—")</MudTd>
+                    <MudTd>@(context.EndTime?.ToString("dd/MM HH:mm") ?? "—")</MudTd>
+                    <MudTd>@context.OperatorIds.Count</MudTd>
+                    <MudTd><EntityActions Kind="VehicleOperation" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+
+    @* ══════════════ ObjectGroups (AR — DDD5 §5.7) ══════════════ *@
+    <MudTabPanel Text="@($"ObjectGroups ({State.ObjectGroups.Count})")">
+        @if (State.ObjectGroups.Count == 0) { <MudAlert Severity="Severity.Info">Nessun gruppo oggetto.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.ObjectGroups" Dense="true" Hover="true">
+                <HeaderContent><MudTh>ID</MudTh><MudTh>Nome</MudTh><MudTh>Descrizione</MudTh><MudTh>Deal</MudTh><MudTh>Oggetti</MudTh><MudTh>Foto</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd><MudTd>@context.Name</MudTd>
+                    <MudTd>@(context.Description ?? "—")</MudTd>
+                    <MudTd>@(context.DealId ?? "—")</MudTd>
+                    <MudTd>@context.ObjectIds.Count</MudTd>
+                    <MudTd>@context.Photos.Count</MudTd>
+                    <MudTd><EntityActions Kind="ObjectGroup" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+</MudTabs>
+
+@* ── EVENTI ── *@
+<MudPaper Class="pa-3 mt-4" Elevation="2" Style="max-height:250px; overflow-y:auto;">
+    <MudText Typo="Typo.h6" Class="mb-2"><MudIcon Icon="@Icons.Material.Filled.Timeline" Size="Size.Small" /> Eventi Execution</MudText>
+    @{ var bcEvents = State.EventLog.Where(e => e.SourceBC == "Execution" || e.TargetBC.Contains("Execution")).Take(30).ToList(); }
+    @if (bcEvents.Count == 0) { <MudText Typo="Typo.body2" Color="Color.Secondary">Nessun evento.</MudText> }
+    else
+    {
+        <div class="d-flex flex-wrap gap-2">
+            @foreach (var evt in bcEvents)
+            {
+                <MudPaper Class="pa-2" Outlined="true" Style="min-width:250px; max-width:350px;">
+                    <div class="d-flex align-center gap-1">
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">@evt.SourceBC</MudChip>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@evt.OccurredAt.ToString("HH:mm:ss")</MudText>
+                    </div>
+                    <MudText Typo="Typo.body2"><b>@evt.Description</b></MudText>
+                </MudPaper>
+            }
+        </div>
+    }
+</MudPaper>
+
+@code {
+    private Action _onStateChanged = null!;
+    protected override void OnInitialized() { _onStateChanged = () => InvokeAsync(StateHasChanged); State.OnStateChanged += _onStateChanged; }
+    public void Dispose() => State.OnStateChanged -= _onStateChanged;
+
+    Color ShiftColor(string s) => s switch { "Completed" => Color.Success, "InProgress" => Color.Warning, "Created" => Color.Default, _ => Color.Secondary };
+    Color SEColor(string s) => s switch { "Completed" => Color.Success, "Partial" or "InProgress" => Color.Warning, "Failed" => Color.Error, _ => Color.Default };
+    Color ObjColor(string s) => s switch { "OnWarehouse" => Color.Info, "OnVehicle" => Color.Warning, "Delivered" => Color.Success, "Disposed" => Color.Error, "Draft" => Color.Default, _ => Color.Secondary };
+    Color WOColor(WorkOrderStatus s) => s switch
+    {
+        WorkOrderStatus.ToSchedule => Color.Default,
+        WorkOrderStatus.Scheduled => Color.Info,
+        WorkOrderStatus.InExecution => Color.Warning,
+        WorkOrderStatus.Paused => Color.Error,
+        WorkOrderStatus.ToVerify => Color.Secondary,
+        WorkOrderStatus.Concluded => Color.Success,
+        WorkOrderStatus.Cancelled => Color.Dark,
+        _ => Color.Default
+    };
+}

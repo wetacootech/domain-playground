@@ -1,0 +1,86 @@
+@page "/bc/shared"
+@inject PlaygroundState State
+@implements IDisposable
+
+<PageTitle>SharedInfrastructure</PageTitle>
+<MudText Typo="Typo.h4" Class="mb-2">Shared Infrastructure</MudText>
+<MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
+    Cataloghi condivisi tra i Bounded Context. <b>AR:</b> Area, ObjectTemplate. Namespace: <code>WeTacoo.Domain.SharedInfrastructure</code>.
+</MudAlert>
+
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+
+    <MudTabPanel Text="@($"Areas ({State.Areas.Count})")">
+        @if (State.Areas.Count == 0) { <MudAlert Severity="Severity.Info">Nessuna area.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.Areas" Dense="true" Hover="true" Striped="true">
+                <HeaderContent><MudTh>ID</MudTh><MudTh>Nome</MudTh><MudTh>Città</MudTh><MudTh>CAP coperti</MudTh><MudTh>Min Booking</MudTh><MudTh>Min Delivery</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd>
+                    <MudTd>@context.Name</MudTd>
+                    <MudTd>@context.City</MudTd>
+                    <MudTd>@context.ZipCodes.Count</MudTd>
+                    <MudTd>@context.MinBookingDays gg</MudTd>
+                    <MudTd>@context.MinDeliveryDays gg</MudTd>
+                    <MudTd><EntityActions Kind="Area" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+
+    <MudTabPanel Text="@($"ObjectTemplates ({State.ObjectTemplates.Count})")">
+        @if (State.ObjectTemplates.Count == 0) { <MudAlert Severity="Severity.Info">Nessun template oggetto.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.ObjectTemplates" Dense="true" Hover="true" Striped="true">
+                <HeaderContent><MudTh>ID</MudTh><MudTh>Nome</MudTh><MudTh>Tipo</MudTh><MudTh>Stanza</MudTh><MudTh>Volume default</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd>
+                    <MudTd>@context.Name</MudTd>
+                    <MudTd>@context.ObjectType</MudTd>
+                    <MudTd>@(context.Room ?? "—")</MudTd>
+                    <MudTd>@($"{context.DefaultVolume:F2} m³")</MudTd>
+                    <MudTd><EntityActions Kind="ObjectTemplate" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+
+    @* ══════════════ Emails (AR — Communications, DDD5 §9.1) ══════════════ *@
+    <MudTabPanel Text="@($"Emails ({State.Emails.Count})")">
+        @if (State.Emails.Count == 0) { <MudAlert Severity="Severity.Info">Nessuna email in outbox.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.Emails" Dense="true" Hover="true" Striped="true">
+                <HeaderContent><MudTh>ID</MudTh><MudTh>A</MudTh><MudTh>Oggetto</MudTh><MudTh>Tipo</MudTh><MudTh>Status</MudTh><MudTh>References</MudTh><MudTh>Sent</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd>
+                    <MudTd>@context.To</MudTd>
+                    <MudTd>@context.Subject</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small">@context.Type</MudChip></MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.Status=="Sent"?Color.Success:context.Status=="Failed"?Color.Error:Color.Warning)">@context.Status</MudChip></MudTd>
+                    <MudTd>
+                        @{ var r = context.References; var parts = new List<string>();
+                           if (r.LeadId != null) parts.Add($"lead:{r.LeadId}");
+                           if (r.DealId != null) parts.Add($"deal:{r.DealId}");
+                           if (r.QuotationId != null) parts.Add($"quot:{r.QuotationId}");
+                           if (r.CommercialServiceId != null) parts.Add($"svc-c:{r.CommercialServiceId}");
+                           if (r.OperationalServiceId != null) parts.Add($"svc-o:{r.OperationalServiceId}");
+                           if (r.PlanId != null) parts.Add($"plan:{r.PlanId}"); }
+                        @(parts.Count == 0 ? "—" : string.Join(", ", parts))
+                    </MudTd>
+                    <MudTd>@(context.SentAt?.ToString("dd/MM HH:mm") ?? "—")</MudTd>
+                    <MudTd><EntityActions Kind="Email" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+
+</MudTabs>
+
+@code {
+    private Action _onStateChanged = null!;
+    protected override void OnInitialized() { _onStateChanged = () => InvokeAsync(StateHasChanged); State.OnStateChanged += _onStateChanged; }
+    public void Dispose() => State.OnStateChanged -= _onStateChanged;
+}

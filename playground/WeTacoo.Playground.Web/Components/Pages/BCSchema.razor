@@ -1,0 +1,246 @@
+@page "/bc/schema"
+@using WeTacoo.Playground.Web.Services
+@inject NavigationManager Nav
+
+<PageTitle>Schema Dominio</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.False" Class="pa-4">
+    <MudText Typo="Typo.h4" Class="mb-2">Schema Dominio — BC × AR × Entity</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+        Rappresentazione visuale di tutti gli Aggregate Root presenti nel playground, stile Diagramma TO BE DDD 7.
+        Ogni AR mostra le proprie proprietà (primitive, VO, enum, entity interne, riferimenti cross-AR) e, quando presenti, le Entity interne.
+    </MudText>
+
+    @* ── Legenda ── *@
+    <MudPaper Class="pa-3 mb-4" Outlined="true">
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Legenda</MudText>
+        <div class="d-flex flex-wrap gap-2">
+            <span class="schema-legend" style="background:#f8cecc;border:1px solid #b85450;">Aggregate Root</span>
+            <span class="schema-legend" style="background:#ffe6cc;border:1px solid #d79b00;">Entity interna</span>
+            <span class="schema-legend" style="background:#fff2cc;border:1px solid #d6b656;">Value Object</span>
+            <span class="schema-legend" style="background:#e1d5e7;border:1px solid #9673a6;">Aggregato (BC gruppo)</span>
+            <span class="schema-legend" style="background:#dae8fc;border:1px solid #6c8ebf;">Bounded Context</span>
+            <span class="schema-legend" style="background:#e0e0e0;border:1px solid #808080;">Primitive / Enum</span>
+            <span class="schema-legend" style="background:#cde6ff;border:1px solid #3f72af;">→ Cross-AR ref</span>
+        </div>
+    </MudPaper>
+
+    @foreach (var bc in _bcsInOrder)
+    {
+        var arsInBc = _schema.Where(s => s.Bc == bc && s.IsAR).OrderBy(s => s.Name).ToList();
+        if (arsInBc.Count == 0) continue;
+
+        <div class="bc-swimlane mb-5">
+            <div class="bc-header">@bc</div>
+            <div class="bc-content">
+                <MudGrid Spacing="3">
+                    @foreach (var ar in arsInBc)
+                    {
+                        <MudItem xs="12" md="6" xl="4">
+                            @RenderAR(ar)
+                        </MudItem>
+                    }
+                </MudGrid>
+            </div>
+        </div>
+    }
+
+</MudContainer>
+
+<style>
+    .schema-legend { padding: 3px 8px; border-radius: 3px; font-size: 0.82rem; }
+
+    .bc-swimlane { border: 2px solid #6c8ebf; border-radius: 6px; background: #f4f8ff; }
+    .bc-header {
+        background: #dae8fc; color: #1a3a6b; font-weight: 600; font-size: 1.05rem;
+        padding: 8px 14px; border-bottom: 1px solid #6c8ebf; border-radius: 4px 4px 0 0;
+    }
+    .bc-content { padding: 14px; }
+
+    .ar-card { border: 2px solid #b85450; border-radius: 4px; background: #fff; }
+    .ar-header {
+        background: #f8cecc; color: #6b1f1e; font-style: italic; font-weight: 600;
+        text-align: center; padding: 6px 10px; border-bottom: 1px solid #b85450;
+    }
+    .ar-rows { }
+
+    .schema-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 4px 10px; border-bottom: 1px solid #eee; font-size: 0.85rem;
+    }
+    .schema-row:last-child { border-bottom: 0; }
+    .schema-row.vo { background: #fff8dc; }
+    .schema-row.enum { }
+    .schema-row.cross-ar { background: #eef5ff; }
+
+    .row-type {
+        font-size: 0.72rem; color: #666; font-family: monospace;
+        background: #f5f5f5; padding: 1px 6px; border-radius: 2px;
+        white-space: nowrap;
+    }
+    .row-type.vo { background: #fff2cc; color: #876c1f; border: 1px solid #d6b656; }
+    .row-type.enum { background: #e8eaf6; color: #283593; border: 1px solid #7986cb; }
+    .row-type.xref { background: #cde6ff; color: #1a3a6b; border: 1px solid #3f72af; }
+    .row-type.computed { background: #efefef; color: #999; font-style: italic; }
+
+    .entity-card { border: 2px solid #d79b00; border-radius: 4px; background: #fff8f0; margin: 6px 0; }
+    .entity-header {
+        background: #ffe6cc; color: #8a5a00; font-style: italic; font-weight: 600;
+        text-align: center; padding: 4px 8px; border-bottom: 1px solid #d79b00; font-size: 0.9rem;
+    }
+    .entity-badge {
+        display: inline-block; background: #ffe6cc; color: #8a5a00;
+        padding: 1px 7px; margin-left: 6px; border-radius: 10px; font-size: 0.7rem;
+        border: 1px solid #d79b00;
+    }
+    .contains-section {
+        padding: 8px 10px; background: #faf7f2; border-top: 1px solid #eee; font-size: 0.8rem;
+    }
+    .contains-section .label { font-weight: 600; color: #555; margin-bottom: 4px; }
+</style>
+
+@code {
+    private List<SchemaType> _schema = new();
+    private List<string> _bcsInOrder = new();
+
+    protected override void OnInitialized()
+    {
+        _schema = DomainSchemaInspector.GetAll();
+        _bcsInOrder = DomainSchemaInspector.GetBcOrder();
+    }
+
+    private RenderFragment RenderAR(SchemaType ar) => __builder =>
+    {
+        <div class="ar-card">
+            <div class="ar-header">@ar.Name</div>
+            <div class="ar-rows">
+                @foreach (var p in ar.Properties.Where(IsAttributeRow))
+                {
+                    @RenderRow(p)
+                }
+            </div>
+
+            @{
+                var innerEntityNames = ar.Properties
+                    .Where(p => p.Kind == SchemaKind.InnerEntity || p.Kind == SchemaKind.InnerEntityList)
+                    .Select(p => p.RelatedTypeName!)
+                    .Distinct()
+                    .ToList();
+            }
+
+            @if (innerEntityNames.Count > 0)
+            {
+                <div class="contains-section">
+                    <div class="label">Contiene:</div>
+                    @foreach (var entityName in innerEntityNames)
+                    {
+                        var entity = DomainSchemaInspector.FindEntity(entityName);
+                        if (entity != null)
+                        {
+                            @RenderEntity(entity, ar.Properties.FirstOrDefault(p => p.RelatedTypeName == entityName))
+                        }
+                    }
+                </div>
+            }
+        </div>
+    };
+
+    private RenderFragment RenderEntity(SchemaType entity, SchemaProperty? parentProp) => __builder =>
+    {
+        <div class="entity-card">
+            <div class="entity-header">
+                @entity.Name
+                @if (parentProp?.Kind == SchemaKind.InnerEntityList)
+                {
+                    <span class="entity-badge">lista — @parentProp.Name</span>
+                }
+                else if (parentProp?.Kind == SchemaKind.InnerEntity)
+                {
+                    <span class="entity-badge">campo — @parentProp.Name</span>
+                }
+            </div>
+            <div>
+                @foreach (var p in entity.Properties.Where(IsAttributeRow))
+                {
+                    @RenderRow(p)
+                }
+            </div>
+
+            @{
+                var nestedEntityNames = entity.Properties
+                    .Where(p => p.Kind == SchemaKind.InnerEntity || p.Kind == SchemaKind.InnerEntityList)
+                    .Select(p => p.RelatedTypeName!)
+                    .Distinct()
+                    .ToList();
+            }
+
+            @if (nestedEntityNames.Count > 0)
+            {
+                <div class="contains-section">
+                    <div class="label">Contiene:</div>
+                    @foreach (var nestedName in nestedEntityNames)
+                    {
+                        var nested = DomainSchemaInspector.FindEntity(nestedName);
+                        if (nested != null)
+                        {
+                            @RenderEntity(nested, entity.Properties.FirstOrDefault(p => p.RelatedTypeName == nestedName))
+                        }
+                    }
+                </div>
+            }
+        </div>
+    };
+
+    private static bool IsAttributeRow(SchemaProperty p)
+        => p.Kind != SchemaKind.InnerEntity && p.Kind != SchemaKind.InnerEntityList;
+
+    private RenderFragment RenderRow(SchemaProperty p) => __builder =>
+    {
+        var rowClass = p.Kind switch
+        {
+            SchemaKind.ValueObject or SchemaKind.ValueObjectList => "schema-row vo",
+            SchemaKind.CrossARRef or SchemaKind.CrossARRefList => "schema-row cross-ar",
+            _ => "schema-row"
+        };
+
+        <div class="@rowClass">
+            <span>
+                @p.Name
+                @if (p.IsNullable && p.Kind != SchemaKind.PrimitiveList && p.Kind != SchemaKind.CrossARRefList && p.Kind != SchemaKind.ValueObjectList)
+                {
+                    <span style="color:#999;">?</span>
+                }
+                @if (p.IsComputed)
+                {
+                    <span class="row-type computed" style="margin-left:6px;">⚙ derived</span>
+                }
+            </span>
+            <span>
+                @switch (p.Kind)
+                {
+                    case SchemaKind.ValueObject:
+                        <span class="row-type vo">VO: @p.RelatedTypeName</span>
+                        break;
+                    case SchemaKind.ValueObjectList:
+                        <span class="row-type vo">List&lt;VO @p.RelatedTypeName&gt;</span>
+                        break;
+                    case SchemaKind.Enum:
+                        <span class="row-type enum">enum: @p.RelatedTypeName</span>
+                        break;
+                    case SchemaKind.CrossARRef:
+                        <span class="row-type xref">→ @p.RelatedTypeName</span>
+                        break;
+                    case SchemaKind.CrossARRefList:
+                        <span class="row-type xref">→ N×@(p.RelatedTypeName ?? "?")</span>
+                        break;
+                    case SchemaKind.PrimitiveList:
+                        <span class="row-type">List&lt;@p.RelatedTypeName&gt;</span>
+                        break;
+                    default:
+                        <span class="row-type">@p.TypeName</span>
+                        break;
+                }
+            </span>
+        </div>
+    };
+}

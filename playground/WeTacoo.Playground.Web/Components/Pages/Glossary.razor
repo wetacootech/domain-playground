@@ -1,0 +1,238 @@
+@page "/glossary"
+
+<PageTitle>Glossario</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Glossario del Dominio WeTacoo</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">Riferimento rapido per capire le entita', gli stati e i flussi del playground. Basato sul modello DDD5.</MudText>
+
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+
+    @* ── ENTITA' ── *@
+    <MudTabPanel Text="Entita'">
+        <MudSimpleTable Dense="true" Hover="true" Striped="true" Elevation="0">
+            <thead><tr><th style="width:140px">Entita'</th><th style="width:100px">BC</th><th>Descrizione</th></tr></thead>
+            <tbody>
+                <tr><td><b>Lead</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Primary">Commercial</MudChip></td>
+                    <td>Persona/contatto nel sistema. Hub anagrafico del cliente. Puo' generare piu' Deal nel tempo. Stato derivato dai Deal associati.</td></tr>
+                <tr><td><b>Deal</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Primary">Commercial</MudChip></td>
+                    <td>Trattativa commerciale. Aggregato centrale di Commercial. Contiene Quotation[] (preventivi) e ActivePlan (piano deposito attivo). Puo' essere OneOff (trasloco) o Recurring (deposito).</td></tr>
+                <tr><td><b>Quotation</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Primary">Commercial</MudChip></td>
+                    <td>Preventivo interno al Deal. Contiene Products (prodotti quotati), ServiceBooked (servizi venduti) e DraftPlans (proposte di piano deposito). Puo' essere accettata — scatena la cascata cross-BC.</td></tr>
+                <tr><td><b>ServiceBooked</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Primary">Commercial</MudChip></td>
+                    <td>Servizio venduto dentro una Quotation. Tipi: Ritiro, Consegna, Smaltimento. Il trasloco e' una composizione di Ritiro + Consegna nella stessa Quotation. Ha state machine propria (6 stati, dominio commerciale). Ogni ServiceBooked genera un WorkOrder all'accettazione. I dati venduti sono immutabili: adeguamenti vivono sulla Quotation (Da adeguare).</td></tr>
+                <tr><td><b>DraftPlan</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Primary">Commercial</MudChip></td>
+                    <td>Proposta di piano deposito dentro una Quotation. Immutabile. All'accettazione viene "promosso" ad ActivePlan sul Deal. Si puo' proporre solo se il Deal non ha gia' un ActivePlan.</td></tr>
+                <tr><td><b>ActivePlan</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Primary">Commercial</MudChip></td>
+                    <td>Piano deposito in produzione sul Deal. Uno solo per Deal. Evolve nel tempo (consegne parziali, ritiri aggiuntivi). Si chiude automaticamente quando non ci sono piu' Object in magazzino per quel Deal.</td></tr>
+                <tr><td><b>ProductTemplate</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Primary">Commercial</MudChip></td>
+                    <td>Catalogo prodotti vendibili. I Product nelle Quotation sono copie istanziate da questi template con prezzo personalizzabile.</td></tr>
+                <tr><td><b>QuestionTemplate</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Primary">Commercial</MudChip></td>
+                    <td>Catalogo domande pre-vendita. All'accettazione di una Quotation, ogni ServiceBooked genera un Questionnaire popolato con le domande applicabili.</td></tr>
+                <tr><td><b>Coupon</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Primary">Commercial</MudChip></td>
+                    <td>Sconto applicabile alla Quotation. Catalogo promozionale gestito da Commercial.</td></tr>
+                <tr><td><b>Salesman</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Primary">Commercial</MudChip></td>
+                    <td>Venditore/commerciale interno. Collegato a Identity via IdentityId.</td></tr>
+
+                <tr><td colspan="3"><MudDivider /></td></tr>
+
+                <tr><td><b>Questionnaire</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Primary">Commercial</MudChip></td>
+                    <td>AR in Commercial (DDD5 review 2026-04-13). Questionario pre-vendita: Commercial lo crea, il cliente o il sales lo compila. Se richiesto sopralluogo, le risposte arrivano da Operational tramite evento InspectionCompletata.</td></tr>
+                <tr><td><b>Area</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Info">SharedInfrastructure</MudChip></td>
+                    <td>Area di copertura geografica. Reference data: definisce dove WeTacoo opera, con quali regole di calendarizzazione e tempi minimi di prenotazione.</td></tr>
+                <tr><td><b>ObjectTemplate</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Info">SharedInfrastructure</MudChip></td>
+                    <td>Catalogo oggetti per il calcolatore volume. Reference data consultato da Commercial in fase di stima.</td></tr>
+
+                <tr><td colspan="3"><MudDivider /></td></tr>
+
+                <tr><td><b>WorkOrder</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">Operational</MudChip></td>
+                    <td>Unita' di lavoro pianificabile con state machine propria (8 stati). Tipo <b>commercial</b>: nato da vendita (Ritiro, Consegna, Smaltimento). Tipo <b>operational</b>: creato da Ops (trasferimento inter-warehouse, trasbordo). Collegato al ServiceBooked via Id. Il sopralluogo NON e' un WorkOrder: vive in Inspection (AR separato).</td></tr>
+                <tr><td><b>Inspection</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">Operational</MudChip></td>
+                    <td>AR separato per il sopralluogo (DDD5 §4.8). Non genera Mission ne' Shift. Stati: Da completare / Completato / Annullato. Le risposte vivono nel Questionnaire (AR Commercial).</td></tr>
+                <tr><td><b>Planning</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">Operational</MudChip></td>
+                    <td>Pianificazione giornaliera. Uno per giorno (non per area — supporta multiregione). Contiene Resources, Teams e Missions.</td></tr>
+                <tr><td><b>Mission</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">Operational</MudChip></td>
+                    <td>Unita' di lavoro pianificata di un team in una giornata. Referenzia WorkOrder via ServiceRef[] (relazione N:M). Puo' contenere piu' WorkOrder (es. piu' ritiri per strada) e un WorkOrder puo' apparire in piu' Mission (es. ritiro multi-giorno).</td></tr>
+                <tr><td><b>Slot</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">Operational</MudChip></td>
+                    <td>Finestra prenotabile per giorno+magazzino+area. Vincoli: volume massimo + numero servizi. Serve per tutti i servizi, non solo gli autonomi.</td></tr>
+                <tr><td><b>Operator</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">Operational</MudChip></td>
+                    <td>Operatore di campo. Ruoli e competenze. Collegato a Identity via IdentityId. Componibile in Team dentro un Planning.</td></tr>
+                <tr><td><b>Warehouse</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">Operational</MudChip></td>
+                    <td>Magazzino fisico WeTacoo. Legato a un'Area. Host degli Object stoccati e punto di partenza/arrivo dei veicoli.</td></tr>
+                <tr><td><b>Vehicle</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">Operational</MudChip></td>
+                    <td>Mezzo di trasporto. Assegnato a un Planning giornaliero, usato in Mission. Capacita' di volume vincola i servizi abbinabili.</td></tr>
+
+                <tr><td colspan="3"><MudDivider /></td></tr>
+
+                <tr><td><b>Shift</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Success">Execution</MudChip></td>
+                    <td>Intervento eseguito. Realizza una Mission. Contiene ServiceEntry (una per WorkOrder) e Task (attivita' svolte). Puo' essere anche "unplanned" (senza Mission).</td></tr>
+                <tr><td><b>ServiceEntry</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Success">Execution</MudChip></td>
+                    <td>Scheda operativa di un WorkOrder nello Shift. Stato esecuzione, tipo operazione, dati cliente, firme. I Task referenziano il ServiceEntry per attribuzione al servizio.</td></tr>
+                <tr><td><b>Task</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Success">Execution</MudChip></td>
+                    <td>Attivita' concreta svolta dall'operatore: censimento, carico, scarico, imballaggio, pausa, movimento... Referenzia un ServiceEntry (nullable per task trasversali come pause).</td></tr>
+                <tr><td><b>Object</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Success">Execution</MudChip></td>
+                    <td>Oggetto fisico reale del cliente. Creato al censimento. Indipendente dagli EstimatedObject di Commercial. Traccia posizione e stato tramite snapshot storicizzati.</td></tr>
+                <tr><td><b>WarehouseOp</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Success">Execution</MudChip></td>
+                    <td>Operazione magazzino (IN/OUT). Posizionamento oggetti, preparazione carichi. Distinta dallo Shift (che e' interazione col cliente).</td></tr>
+                <tr><td><b>Label</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Success">Execution</MudChip></td>
+                    <td>Etichetta fisica applicata all'Object durante il censimento. Stampata in magazzino, garantisce tracciabilita' univoca per tutto il ciclo.</td></tr>
+
+                <tr><td colspan="3"><MudDivider /></td></tr>
+
+                <tr><td><b>Payment</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Error">Financial</MudChip></td>
+                    <td>Pagamento legato a un Deal. Contiene Charges (addebiti singoli) e SimplifiedProducts. Commercial decide il prezzo, Financial decide come e quando incassare.</td></tr>
+                <tr><td><b>Charge</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Error">Financial</MudChip></td>
+                    <td>Singolo addebito dentro un Payment. Una tantum o ricorrente (canone mensile deposito). Financial gestisce esecuzione, riprova, storno.</td></tr>
+                <tr><td><b>FinancialClient</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Error">Financial</MudChip></td>
+                    <td>Rappresentazione finanziaria del cliente. Stato pagamenti, credito, dati fatturazione. Collegato a Commercial.Lead via ID.</td></tr>
+            </tbody>
+        </MudSimpleTable>
+    </MudTabPanel>
+
+    @* ── STATI ── *@
+    <MudTabPanel Text="Stati">
+        <MudText Typo="Typo.h6" Class="mb-2">Deal (DDD5 §10c)</MudText>
+        <MudSimpleTable Dense="true" Hover="true" Striped="true" Elevation="0">
+            <thead><tr><th>Stato</th><th>Significato</th><th>Transizioni</th></tr></thead>
+            <tbody>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">ToQualify (Da qualificare)</MudChip></td><td>Deal creato, in attesa di qualificazione.</td><td>Qualifica → Qualified / Scarta → NotConverted</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Info">Qualified (Qualificato)</MudChip></td><td>Qualificato da sales.</td><td>Rilascia a cliente → InNegotiation / Scarta → NotConverted</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Info">InNegotiation (In trattativa)</MudChip></td><td>In fase di negoziazione attiva.</td><td>Quotation finalizzata → Converted / Scarta → NotConverted</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Success">Converted (Convertito)</MudChip></td><td>Quotation finalizzata, servizi creati.</td><td>Recurring → Active / OneOff → Concluded / Annulla → Cancelled</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Success">Active (Attivo)</MudChip></td><td>Deal recurring attivato con ActivePlan.</td><td>Quotation completata → Concluded / Annulla → Cancelled</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Error">Concluded (Concluso)</MudChip></td><td>Terminale positivo.</td><td>—</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Error">NotConverted (Non convertito)</MudChip></td><td>Terminale negativo (scartato).</td><td>—</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Error">Cancelled (Annullato)</MudChip></td><td>Terminale negativo (cancellato).</td><td>—</td></tr>
+            </tbody>
+        </MudSimpleTable>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">Quotation (DDD5 §10c — ORDER)</MudText>
+        <MudSimpleTable Dense="true" Hover="true" Striped="true" Elevation="0">
+            <thead><tr><th>Stato</th><th>Significato</th><th>Transizioni</th></tr></thead>
+            <tbody>
+                <tr><td><MudChip T="string" Size="Size.Small">Draft (Bozza)</MudChip></td><td>Creata, liberamente modificabile.</td><td>Conferma → InProgress / Archivia → Archived</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Info">InProgress (In lavorazione)</MudChip></td><td>Confermata, in lavorazione attiva.</td><td>Finalizza → Finalized / Prendi in carico → Draft / Archivia → Archived</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Success">Finalized (Finalizzato)</MudChip></td><td>Checkout completato, servizi e pagamenti creati.</td><td>Servizio completato (no diff) → Completed / Servizio completato (diff) → ToAdjust / Problemi → ToVerify / Annulla</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">ToVerify (Da verificare)</MudChip></td><td>Serve verifica (questionario, modifiche, problemi esecuzione).</td><td>Verifica → Finalized / Annulla</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">ToAdjust (Da adeguare)</MudChip></td><td>Post-esecuzione con differenze da riconciliare.</td><td>Segna come completato → Completed</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Success">Completed (Completato)</MudChip></td><td>Terminale positivo.</td><td>—</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Default">Archived (Archiviato)</MudChip></td><td>Sostituita o scartata.</td><td>—</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Error">Cancelled (Annullato)</MudChip></td><td>Terminale negativo.</td><td>—</td></tr>
+            </tbody>
+        </MudSimpleTable>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">ServiceBooked (DDD5 §10c — review 2026-04-13)</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">Ciclo commerciale: "devo fare qualcosa o no?". 6 stati.</MudText>
+        <MudSimpleTable Dense="true" Hover="true" Striped="true" Elevation="0">
+            <thead><tr><th>Stato</th><th>Significato</th><th>Transizioni</th></tr></thead>
+            <tbody>
+                <tr><td><MudChip T="string" Size="Size.Small">ToAccept (Da accettare)</MudChip></td><td>Quotation non finalizzata.</td><td>Accetta Quotation → ToComplete / Richiedi sopralluogo → PendingInspection</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Info">PendingInspection (In attesa sopralluogo)</MudChip></td><td>Sales attende risultati Inspection.</td><td>InspectionCompletata → ToAccept</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">ToComplete (Da completare)</MudChip></td><td>Sales deve agire: questionario, problema, rinegoziazione.</td><td>Questionario verificato → Ready / Chiudi a volume ridotto → Completed / RichiedeIntervento → ToComplete (da Ready)</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Primary">Ready (Pronto)</MudChip></td><td>Nessuna azione Commercial, palla a Operational.</td><td>ServizioCompletato → Completed / RichiedeIntervento → ToComplete</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Success">Completed (Completato)</MudChip></td><td>Terminale positivo.</td><td>—</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Error">Cancelled (Annullato)</MudChip></td><td>Terminale negativo.</td><td>—</td></tr>
+            </tbody>
+        </MudSimpleTable>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">WorkOrder (DDD5 §10c — review 2026-04-13)</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">Ciclo operativo indipendente: pianificazione ed esecuzione. 8 stati.</MudText>
+        <MudSimpleTable Dense="true" Hover="true" Striped="true" Elevation="0">
+            <thead><tr><th>Stato</th><th>Significato</th><th>Transizioni</th></tr></thead>
+            <tbody>
+                <tr><td><MudChip T="string" Size="Size.Small">Completing (In completamento)</MudChip></td><td>Creato alla finalizzazione Deal. Mission creabili ma non confermabili.</td><td>ServizioPronto → ToSchedule</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Info">ToSchedule (Da programmare)</MudChip></td><td>ServiceBooked Pronto. Mission confermabili.</td><td>Conferma Mission → Scheduled / Non programmabile → Paused</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Primary">Scheduled (Programmato)</MudChip></td><td>Mission pianificate, in attesa di esecuzione.</td><td>OperazioneAvviata → InExecution / Riprogramma → ToSchedule</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">InExecution (In esecuzione)</MudChip></td><td>Shift avviato.</td><td>OperazioneCompletata → ToVerify / OperazioneInterrotta (problema ops) → ToSchedule / OperazioneInterrotta (serve Commercial) → Paused / ChiusuraAnticipata → ToVerify</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">Paused (In pausa)</MudChip></td><td>Problema che richiede decisione Commercial.</td><td>InterventoRisolto Riprogramma → ToSchedule / Riprendi → InExecution / Chiudi → ToVerify</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">ToVerify (Da verificare)</MudChip></td><td>Ops verifica fatti ricevuti da Execution.</td><td>Verifica → Concluded</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Success">Concluded (Concluso)</MudChip></td><td>Terminale positivo.</td><td>—</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Error">Cancelled (Annullato)</MudChip></td><td>Terminale negativo.</td><td>—</td></tr>
+            </tbody>
+        </MudSimpleTable>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">Shift (DDD5 §10c — OPERATION)</MudText>
+        <MudSimpleTable Dense="true" Hover="true" Striped="true" Elevation="0">
+            <thead><tr><th>Stato</th><th>Significato</th><th>Transizioni</th></tr></thead>
+            <tbody>
+                <tr><td><MudChip T="string" Size="Size.Small">Created (Creato)</MudChip></td><td>Shift creato dalla Mission, in attesa di avvio.</td><td>Avvia → InProgress</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">InProgress (In corso)</MudChip></td><td>Operatori al lavoro.</td><td>Pausa → Paused / Termina totale → Completed / Termina parziale → Suspended</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Info">Paused (In pausa)</MudChip></td><td>Sospeso temporaneamente.</td><td>Riprendi → InProgress</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Error">Suspended (Sospesa)</MudChip></td><td>Interruzione parziale.</td><td>Riavvia → InProgress</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Success">Completed (Completata)</MudChip></td><td>Terminale positivo.</td><td>—</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Error">Cancelled (Annullata)</MudChip></td><td>Terminale negativo.</td><td>—</td></tr>
+            </tbody>
+        </MudSimpleTable>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">Inspection (DDD5 §4.8)</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">AR sopralluogo, ciclo semplice: Da completare → Completato (o Annullato). Nessuna Mission/Shift.</MudText>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">Object (Oggetto Fisico)</MudText>
+        <MudSimpleTable Dense="true" Hover="true" Striped="true" Elevation="0">
+            <thead><tr><th>Stato</th><th>Significato</th></tr></thead>
+            <tbody>
+                <tr><td><MudChip T="string" Size="Size.Small">Draft</MudChip></td><td>Censito ma non ancora etichettato.</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Secondary">PickedUp</MudChip></td><td>Etichettato e inventariato durante il ritiro.</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">OnVehicle</MudChip></td><td>Caricato su veicolo, in transito.</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Info">OnWarehouse</MudChip></td><td>Stoccato in magazzino. Posizione tracciata.</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Success">Delivered</MudChip></td><td>Consegnato al cliente. Stato finale.</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Error">Disposed</MudChip></td><td>Smaltito. Stato finale.</td></tr>
+            </tbody>
+        </MudSimpleTable>
+    </MudTabPanel>
+
+    @* ── FLUSSI ── *@
+    <MudTabPanel Text="Flussi">
+        <MudText Typo="Typo.h6" Class="mb-2">Deposito (Flusso Completo — catena cross-BC)</MudText>
+        <MudTimeline TimelinePosition="TimelinePosition.Start">
+            <MudTimelineItem Color="Color.Primary"><MudText Typo="Typo.body2"><b>1. Lead creato</b> — cliente registrato</MudText></MudTimelineItem>
+            <MudTimelineItem Color="Color.Primary"><MudText Typo="Typo.body2"><b>2. Deal Recurring</b> — Da qualificare → Qualificato → In trattativa</MudText></MudTimelineItem>
+            <MudTimelineItem Color="Color.Primary"><MudText Typo="Typo.body2"><b>3. Quotation</b> — Bozza → In lavorazione → Finalizzato. Crea ServiceBooked (Da completare) + WorkOrder (In completamento) + Payment</MudText></MudTimelineItem>
+            <MudTimelineItem Color="Color.Success"><MudText Typo="Typo.body2"><b>4. Deal Convertito</b> — DraftPlan → ActivePlan (dati del piano, Deal resta Convertito)</MudText></MudTimelineItem>
+            <MudTimelineItem Color="Color.Info"><MudText Typo="Typo.body2"><b>5. Questionario completato</b> — SB: Da completare → Pronto. WO: In completamento → Da programmare</MudText></MudTimelineItem>
+            <MudTimelineItem Color="Color.Warning"><MudText Typo="Typo.body2"><b>6. Programma servizio</b> — WO: Da programmare → Programmato. Crea Planning + Mission + Shift</MudText></MudTimelineItem>
+            <MudTimelineItem Color="Color.Warning"><MudText Typo="Typo.body2"><b>7. Avvia Shift</b> — WO: Programmato → In esecuzione</MudText></MudTimelineItem>
+            <MudTimelineItem Color="Color.Success"><MudText Typo="Typo.body2"><b>8. Completa Shift</b> — WO: In esecuzione → Da verificare. Oggetti scaricati a magazzino</MudText></MudTimelineItem>
+            <MudTimelineItem Color="Color.Success"><MudText Typo="Typo.body2"><b>9. Verifica e concludi</b> — WO: Da verificare → Concluso. SB: Pronto → Completato. Quotation: Finalizzato → Completato (o Da adeguare se differenze)</MudText></MudTimelineItem>
+            <MudTimelineItem Color="Color.Error"><MudText Typo="Typo.body2"><b>10. Deal Attivo → Concluso</b> — Recurring: Convertito → Attivo. Quando Object OnWarehouse = 0 → Concluso</MudText></MudTimelineItem>
+        </MudTimeline>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">Trasloco</MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">Come il deposito ma: Deal OneOff, Quotation con 2 ServiceBooked (Ritiro + Consegna), nessun DraftPlan. Mission unica con 2 ServiceRef se stesso giorno.</MudText>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">Servizio Aggiuntivo (su Deal Attivo)</MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">Su un Deal Recurring gia' Attivo: nuova Quotation con ServiceBooked (Consegna/Smaltimento), senza DraftPlan. Accettazione crea nuovi WorkOrder e Payment senza toccare l'ActivePlan. Il piano si aggiorna dopo l'esecuzione in base agli oggetti rimasti.</MudText>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">Sopralluogo (Inspection)</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">Flusso parallelo senza Mission/Shift. Non passa da Execution.</MudText>
+        <MudTimeline TimelinePosition="TimelinePosition.Start">
+            <MudTimelineItem Color="Color.Primary"><MudText Typo="Typo.body2"><b>1. Sales richiede sopralluogo</b> — Quotation con ServiceBooked: Da accettare → In attesa sopralluogo. Emit SopralluogoRichiesto</MudText></MudTimelineItem>
+            <MudTimelineItem Color="Color.Warning"><MudText Typo="Typo.body2"><b>2. Operational crea Inspection</b> — AR Inspection in stato Da completare. Riferimento al Questionnaire su ServiceBooked</MudText></MudTimelineItem>
+            <MudTimelineItem Color="Color.Warning"><MudText Typo="Typo.body2"><b>3. Operatore compila questionario</b> — assegnazione informale, no Mission/Shift. Risposte salvate sul Questionnaire (AR Commercial)</MudText></MudTimelineItem>
+            <MudTimelineItem Color="Color.Success"><MudText Typo="Typo.body2"><b>4. Inspection Completato</b> — emit InspectionCompletata. ServiceBooked: In attesa sopralluogo → Da accettare. Sales puo' rifinire e finalizzare Quotation</MudText></MudTimelineItem>
+        </MudTimeline>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">Cancellazione (soft delete)</MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">Ogni entita' ha uno stato Annullato terminale. Non viene mai eliminato nulla fisicamente: Deal/Quotation/ServiceBooked/WorkOrder/Shift/Mission passano in Annullato mantenendo storia e audit. La cancellazione a meta' esecuzione puo' generare penali (Charge aggiuntivo) e operazioni di riconsegna oggetti gia' ritirati.</MudText>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">Chiusura ActivePlan</MudText>
+        <MudText Typo="Typo.body2">Dopo ogni consegna/smaltimento, Commercial verifica quanti Object restano OnWarehouse per il Deal. Se zero → ActivePlan si chiude → Deal si chiude. Se >0 → ActivePlan resta attivo. Questo gestisce naturalmente gli oggetti rifiutati.</MudText>
+    </MudTabPanel>
+
+    @* ── REGOLE ── *@
+    <MudTabPanel Text="Regole Chiave">
+        <MudList T="string" Dense="true">
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Rule"><b>Financial esegue, non calcola.</b> Commercial decide il prezzo. Financial decide come e quando incassare.</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Rule"><b>Trasloco = composizione.</b> Non e' un tipo di Service. E' Ritiro + Consegna nella stessa Quotation.</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Rule"><b>Catena Execution → Operational → Commercial.</b> Operational non e' un relay — verifica i dati post-esecuzione prima di coinvolgere Commercial.</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Rule"><b>Un solo ActivePlan per Deal.</b> Le Quotation successive aggiungono servizi senza creare nuovi piani.</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Rule"><b>Dati venduti immutabili.</b> ServiceBooked non cambia dopo finalizzazione: gli adeguamenti vivono sulla Quotation (Da adeguare). Eccezione ActivePlan, che rappresenta lo stato corrente del deposito.</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Rule"><b>ServiceBooked e WorkOrder: state machine separate.</b> ServiceBooked (6 stati) segue il dominio commerciale; WorkOrder (8 stati) segue il dominio operativo. Comunicazione via eventi (ServizioVenduto, ServizioPronto, InterventoRisolto, ServizioCompletato, RichiedeIntervento).</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Rule"><b>Cancellazione = soft delete.</b> Le entita' passano ad Annullato, non vengono eliminate.</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Rule"><b>Object indipendenti da EstimatedObject.</b> Gli oggetti fisici nascono al censimento, non dalla stima commerciale.</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Rule"><b>WorkOrder ↔ Mission: relazione N:M.</b> Un WorkOrder in piu' Mission (multi-giorno), una Mission con piu' WorkOrder (piu' servizi per giro).</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Rule"><b>Chiusura ActivePlan basata su conteggio Object.</b> Non sul flag Parziale. Dopo ogni servizio: count Object OnWarehouse per Deal = 0 → chiudi.</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Rule"><b>Planning per giorno, non per area.</b> Un Planning al giorno supporta multiregione: contiene Resources, Team e Mission di piu' aree insieme. Lo Slot vincola disponibilita' per giorno+magazzino+area.</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Rule"><b>Service operativi autonomi.</b> Operational puo' creare WorkOrder senza origine commerciale (trasferimenti inter-warehouse, trasbordi). Tipo WorkOrder = <b>operational</b>, non collegato a ServiceBooked.</MudListItem>
+        </MudList>
+    </MudTabPanel>
+</MudTabs>

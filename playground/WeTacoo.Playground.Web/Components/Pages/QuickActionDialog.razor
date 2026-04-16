@@ -1,0 +1,113 @@
+﻿@inject PlaygroundState State
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_preset == "deposito" ? "Nuovo Cliente Deposito" : "Nuovo Cliente Trasloco")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="6"><MudTextField @bind-Value="_firstName" Label="Nome" Required="true" /></MudItem>
+            <MudItem xs="6"><MudTextField @bind-Value="_lastName" Label="Cognome" Required="true" /></MudItem>
+            <MudItem xs="6"><MudTextField @bind-Value="_email" Label="Email" Required="true" /></MudItem>
+            <MudItem xs="6"><MudTextField @bind-Value="_phone" Label="Telefono" /></MudItem>
+            <MudItem xs="8"><MudTextField @bind-Value="_street" Label="Via" /></MudItem>
+            <MudItem xs="4"><MudTextField @bind-Value="_city" Label="Citta" /></MudItem>
+            <MudItem xs="6">
+                <MudSelect @bind-Value="_areaId" Label="Area" T="string">
+                    @foreach (var a in State.Areas)
+                    { <MudSelectItem T="string" Value="@a.Id">@a.Name</MudSelectItem> }
+                </MudSelect>
+            </MudItem>
+            @if (_preset == "trasloco")
+            {
+                <MudItem xs="12"><MudDivider /><MudText Typo="Typo.subtitle2" Class="mt-2">Destinazione</MudText></MudItem>
+                <MudItem xs="8"><MudTextField @bind-Value="_destStreet" Label="Via destinazione" /></MudItem>
+                <MudItem xs="4"><MudTextField @bind-Value="_destCity" Label="Citta destinazione" /></MudItem>
+            }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Annulla</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit"
+                   Disabled="@(string.IsNullOrWhiteSpace(_firstName) || string.IsNullOrWhiteSpace(_email))">Crea</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string Preset { get => _preset; set => _preset = value; }
+
+    private string _preset = "deposito";
+    private string _firstName = "", _lastName = "", _email = "", _phone = "";
+    private string _street = "", _city = "";
+    private string _destStreet = "", _destCity = "";
+    private string? _areaId;
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Submit()
+    {
+        // Create Lead
+        var lead = new WeTacoo.Domain.Commercial.Lead
+        {
+            Personal = new WeTacoo.Domain.Commercial.ValueObjects.Personal(_firstName, _lastName, _email, _phone)
+        };
+        State.Leads.Add(lead);
+        State.PublishEvent(new WeTacoo.Domain.Events.LeadCreatedEvent(lead.Id));
+
+        // Identity User
+        var user = new WeTacoo.Domain.Identity.User { Email = _email, Role = "Customer" };
+        State.Users.Add(user);
+        lead.IdentityId = user.Id;
+
+        // Marketing
+        var mkt = new WeTacoo.Domain.Marketing.MarketingClient { CommercialLeadId = lead.Id, FunnelStep = "LeadCreated" };
+        State.MarketingClients.Add(mkt);
+
+        // Deal — il Type viene derivato dalle Quotation: sara' Recurring all'accettazione della Quotation con DraftPlan
+        var deal = new WeTacoo.Domain.Commercial.Deal { LeadId = lead.Id, AreaId = _areaId };
+        State.Deals.Add(deal);
+        lead.AddDeal(deal.Id);
+        mkt.AddDeal(deal.Id);
+        State.PublishEvent(new WeTacoo.Domain.Events.DealCreatedEvent(deal.Id, lead.Id));
+
+        // First Quotation with auto services
+        var addr = new WeTacoo.Domain.Commercial.ValueObjects.Address(_street, _city, "", _areaId);
+        var services = new List<WeTacoo.Domain.Commercial.Entities.ServiceBooked>();
+        services.Add(new WeTacoo.Domain.Commercial.Entities.ServiceBooked
+        {
+            Type = WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro,
+            ServiceAddress = addr
+        });
+        if (_preset == "trasloco")
+        {
+            var destAddr = new WeTacoo.Domain.Commercial.ValueObjects.Address(_destStreet, _destCity, "", _areaId);
+            services.Add(new WeTacoo.Domain.Commercial.Entities.ServiceBooked
+            {
+                Type = WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Consegna,
+                ServiceAddress = destAddr
+            });
+        }
+        var quotation = new WeTacoo.Domain.Commercial.Entities.Quotation
+        {
+            DealId = deal.Id,
+            IsInitial = true,
+            Services = services,
+            PaymentCondition = new WeTacoo.Domain.Commercial.ValueObjects.PaymentCondition(22m, 30),
+        };
+        // Add default DraftPlan for deposito
+        if (_preset == "deposito")
+        {
+            quotation.DraftPlans.Add(new WeTacoo.Domain.Commercial.Entities.DraftPlan
+            {
+                Description = "Piano deposito", MonthlyFee = 89.90m, EstimatedM3 = 10, AreaId = _areaId
+            });
+        }
+        deal.Quotations.Add(quotation);
+
+        Snackbar.Add($"Cliente {_firstName} {_lastName} creato con Deal e Quotation iniziale", Severity.Success);
+        State.NotifyStateChanged();
+        MudDialog.Close(DialogResult.Ok(lead.Id));
+    }
+}

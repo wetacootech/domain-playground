@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="WeTacoo.Domain/WeTacoo.Domain.csproj" />
+  <Project Path="WeTacoo.Playground.Web/WeTacoo.Playground.Web.csproj" />
+  <Project Path="WeTacoo.Tests/WeTacoo.Tests.csproj" />
+</Solution>

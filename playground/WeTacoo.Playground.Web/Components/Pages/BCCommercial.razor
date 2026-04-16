@@ -1,0 +1,284 @@
+@page "/bc/commercial"
+@inject PlaygroundState State
+@implements IDisposable
+
+<PageTitle>Commercial BC</PageTitle>
+<MudText Typo="Typo.h4" Class="mb-2">Commercial BC</MudText>
+<MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">Pagina di sola lettura. Creazione Lead/Deal/Quotation, qualifica, accettazione e verifica Questionnaire si fanno dal <b>Workspace</b>.</MudAlert>
+
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+
+    <MudTabPanel Text="@($"Leads ({State.Leads.Count})")">
+        @if (State.Leads.Count == 0) { <MudAlert Severity="Severity.Info">Nessun Lead.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.Leads" Dense="true" Hover="true" Striped="true">
+                <HeaderContent>
+                    <MudTh>ID</MudTh><MudTh>Nome</MudTh><MudTh>Email</MudTh><MudTh>Status</MudTh><MudTh>Customer</MudTh><MudTh>Deals</MudTh><MudTh>Azioni</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd>
+                    <MudTd>@context.Personal.FirstName @context.Personal.LastName</MudTd>
+                    <MudTd>@context.Personal.Email</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="@LeadColor(context.Status.ToString())">@context.Status</MudChip></MudTd>
+                    <MudTd>@(context.Customer.IsCustomer ? "Si" : "No")</MudTd>
+                    <MudTd>@context.DealIds.Count</MudTd>
+                    <MudTd><EntityActions Kind="Lead" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+
+    <MudTabPanel Text="@($"Deals ({State.Deals.Count})")">
+        @if (State.Deals.Count == 0) { <MudAlert Severity="Severity.Info">Nessun Deal.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.Deals" Dense="true" Hover="true" Striped="true">
+                <HeaderContent>
+                    <MudTh>ID</MudTh><MudTh>Lead</MudTh><MudTh>Type</MudTh><MudTh>Status</MudTh><MudTh>Quotations</MudTh><MudTh>ActivePlan</MudTh><MudTh>Azioni</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd>
+                    <MudTd>@GetLeadName(context.LeadId)</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small">@context.Type</MudChip></MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="@DealColor(context.Status.ToString())">@context.Status</MudChip></MudTd>
+                    <MudTd>@context.Quotations.Count</MudTd>
+                    <MudTd>
+                        @if (context.ActivePlan != null)
+                        {
+                            <MudText Typo="Typo.body2">@($"{context.ActivePlan.CurrentM3:F1}m3 | {context.ActivePlan.MonthlyFee:C}/mese | {context.ActivePlan.ObjectCount} obj")</MudText>
+                        }
+                        else { <MudText Typo="Typo.body2" Color="Color.Secondary">-</MudText> }
+                    </MudTd>
+                    <MudTd><EntityActions Kind="Deal" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            <MudExpansionPanels MultiExpansion="true" Class="mt-4">
+                @foreach (var deal in State.Deals)
+                {
+                    <MudExpansionPanel Text="@($"Deal {deal.Id.Substring(0, Math.Min(8, deal.Id.Length))} — {deal.Status} — {deal.Quotations.Count} quotation(s)")">
+                        @if (deal.Quotations.Count == 0) { <MudAlert Severity="Severity.Info" Dense="true">Nessuna quotation.</MudAlert> }
+                        else
+                        {
+                            @foreach (var q in deal.Quotations)
+                            {
+                                <MudCard Class="mb-3 pa-3" Elevation="1" Outlined="true" Style="@(q.IsAccepted ? "border-left: 4px solid var(--mud-palette-success);" : "")">
+                                    <div class="d-flex justify-space-between align-center mb-2">
+                                        <MudText Typo="Typo.subtitle2">
+                                            Quotation @q.Id
+                                            <MudChip T="string" Size="Size.Small" Color="@QuotColor(q.Status.ToString())">@q.Status</MudChip>
+                                            @if (q.IsAccepted) { <MudChip T="string" Size="Size.Small" Color="Color.Success">ACCETTATA</MudChip> }
+                                        </MudText>
+                                        <div class="d-flex align-center gap-1">
+                                            <MudText Typo="Typo.h6" Color="Color.Primary">@q.TotalPrice.ToString("C")</MudText>
+                                            <EntityActions Kind="Quotation" Ids="@(new[] { deal.Id, q.Id })" Entity="q" OnChanged="StateHasChanged" />
+                                        </div>
+                                    </div>
+
+                                    @if (q.Products.Count > 0)
+                                    {
+                                        <MudText Typo="Typo.body2" Class="mb-1"><b>Products (Entity dentro Quotation):</b></MudText>
+                                        <MudSimpleTable Dense="true" Elevation="0">
+                                            <thead><tr><th>ID</th><th>Prodotto</th><th>Prezzo</th><th>Azioni</th></tr></thead>
+                                            <tbody>
+                                            @foreach (var p in q.Products)
+                                            {
+                                                <tr><td style="font-family:monospace">@p.Id</td><td>@p.Name</td><td>@p.Price.ToString("C")</td><td><EntityActions Kind="Product" Ids="@(new[] { deal.Id, q.Id, p.Id })" Entity="p" OnChanged="StateHasChanged" /></td></tr>
+                                            }
+                                            </tbody>
+                                        </MudSimpleTable>
+                                    }
+
+                                    @if (q.Services.Count > 0)
+                                    {
+                                        <MudText Typo="Typo.body2" Class="mt-2 mb-1"><b>ServiceBooked (Entity dentro Quotation):</b></MudText>
+                                        <MudSimpleTable Dense="true" Elevation="0">
+                                            <thead><tr><th>ID</th><th>Tipo</th><th>Indirizzo</th><th>Data prog.</th><th>Status</th><th>WO</th><th>Azioni</th></tr></thead>
+                                            <tbody>
+                                            @foreach (var s in q.Services)
+                                            {
+                                                <tr>
+                                                    <td style="font-family:monospace">@s.Id</td>
+                                                    <td>@s.Type</td>
+                                                    <td>@(s.ServiceAddress?.Street), @(s.ServiceAddress?.City)</td>
+                                                    <td>@(s.ScheduledDate?.ToString("dd/MM") ?? "—") @(s.ScheduledSlot ?? "")</td>
+                                                    <td><MudChip T="string" Size="Size.Small" Color="@SBColor(s.Status.ToString())">@s.Status</MudChip></td>
+                                                    <td>@(s.WorkOrderId ?? "—")</td>
+                                                    <td><EntityActions Kind="ServiceBooked" Ids="@(new[] { deal.Id, q.Id, s.Id })" Entity="s" OnChanged="StateHasChanged" /></td>
+                                                </tr>
+                                            }
+                                            </tbody>
+                                        </MudSimpleTable>
+                                    }
+
+                                    @if (q.DraftPlans.Count > 0)
+                                    {
+                                        <MudText Typo="Typo.body2" Class="mt-2 mb-1"><b>DraftPlans (Entity dentro Quotation):</b></MudText>
+                                        <MudSimpleTable Dense="true" Elevation="0">
+                                            <thead><tr><th>ID</th><th>Descrizione</th><th>Canone</th><th>m³ stim.</th><th>Azioni</th></tr></thead>
+                                            <tbody>
+                                            @foreach (var dp in q.DraftPlans)
+                                            {
+                                                <tr><td style="font-family:monospace">@dp.Id</td><td>@dp.Description</td><td>@dp.MonthlyFee.ToString("C")</td><td>@($"{dp.EstimatedM3:F1}")</td><td><EntityActions Kind="DraftPlan" Ids="@(new[] { deal.Id, q.Id, dp.Id })" Entity="dp" OnChanged="StateHasChanged" /></td></tr>
+                                            }
+                                            </tbody>
+                                        </MudSimpleTable>
+                                    }
+
+                                    @if (deal.ActivePlan != null && deal.ActivePlan.QuotationId == q.Id)
+                                    {
+                                        <MudText Typo="Typo.body2" Class="mt-2 mb-1"><b>ActivePlan (VO dentro Deal, originato da questa Quotation):</b></MudText>
+                                        <MudPaper Class="pa-2" Outlined="true">
+                                            <MudText Typo="Typo.caption">Canone: @deal.ActivePlan.MonthlyFee.ToString("C") | m³: @deal.ActivePlan.CurrentM3 | Oggetti: @deal.ActivePlan.ObjectCount</MudText>
+                                        </MudPaper>
+                                    }
+                                </MudCard>
+                            }
+                        }
+                    </MudExpansionPanel>
+                }
+            </MudExpansionPanels>
+        }
+    </MudTabPanel>
+
+    <MudTabPanel Text="@($"Questionnaires ({State.Questionnaires.Count})")">
+        @if (State.Questionnaires.Count == 0) { <MudAlert Severity="Severity.Info">Nessun questionario.</MudAlert> }
+        else
+        {
+            @foreach (var quest in State.Questionnaires)
+            {
+                <MudCard Class="mb-3 pa-3" Elevation="1" Outlined="true">
+                    <div class="d-flex justify-space-between align-center mb-2">
+                        <MudText Typo="Typo.subtitle2">Questionnaire @quest.Id</MudText>
+                        <div class="d-flex gap-2 align-center">
+                            <MudChip T="string" Size="Size.Small" Color="@(quest.IsVerified ? Color.Success : Color.Warning)">@(quest.IsVerified ? "Verificato" : "Non verificato")</MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Info">@quest.Questions.Count domande</MudChip>
+                            @if (!string.IsNullOrEmpty(quest.Origin)) { <MudChip T="string" Size="Size.Small" Color="Color.Default">@quest.Origin</MudChip> }
+                            <EntityActions Kind="Questionnaire" Ids="@(new[] { quest.Id })" Entity="quest" OnChanged="StateHasChanged" />
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(quest.Notes)) { <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">@quest.Notes</MudText> }
+                    @if (quest.Questions.Count > 0)
+                    {
+                        <MudSimpleTable Dense="true" Elevation="0">
+                            <thead><tr><th>Domanda</th><th>Risposta</th></tr></thead>
+                            <tbody>
+                            @foreach (var q in quest.Questions)
+                            {
+                                <tr><td>@q.Data.Question</td><td>@(q.Data.Answer ?? "—")</td></tr>
+                            }
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+                </MudCard>
+            }
+        }
+    </MudTabPanel>
+
+    <MudTabPanel Text="@($"Catalogo ({State.ProductTemplates.Count})")">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">Product Templates</MudText>
+        @if (State.ProductTemplates.Count == 0) { <MudAlert Severity="Severity.Info">Nessun prodotto.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.ProductTemplates" Dense="true" Hover="true">
+                <HeaderContent><MudTh>ID</MudTh><MudTh>Nome</MudTh><MudTh>Prezzo Base</MudTh><MudTh>Tipo</MudTh><MudTh>Area</MudTh><MudTh>Attivo</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd>
+                    <MudTd>@context.Name</MudTd>
+                    <MudTd>@context.BasePrice.ToString("C")</MudTd>
+                    <MudTd>@context.ProductType</MudTd>
+                    <MudTd>@(context.AreaId ?? "-")</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">@(context.IsActive ? "Si" : "No")</MudChip></MudTd>
+                    <MudTd><EntityActions Kind="ProductTemplate" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+
+        <MudText Typo="Typo.subtitle1" Class="mb-2 mt-4">Question Templates</MudText>
+        @if (State.QuestionTemplates.Count == 0) { <MudAlert Severity="Severity.Info">Nessuna domanda template.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.QuestionTemplates" Dense="true" Hover="true">
+                <HeaderContent><MudTh>ID</MudTh><MudTh>Testo</MudTh><MudTh>Tipo</MudTh><MudTh>Visibilita</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd>
+                    <MudTd>@context.Question</MudTd>
+                    <MudTd>@context.QuestionType</MudTd>
+                    <MudTd>@context.Visibility</MudTd>
+                    <MudTd><EntityActions Kind="QuestionTemplate" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+
+        <MudText Typo="Typo.subtitle1" Class="mb-2 mt-4">Coupon</MudText>
+        @if (State.Coupons.Count == 0) { <MudAlert Severity="Severity.Info">Nessun coupon.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.Coupons" Dense="true" Hover="true">
+                <HeaderContent><MudTh>ID</MudTh><MudTh>Code</MudTh><MudTh>Sconto</MudTh><MudTh>Attivo</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd>
+                    <MudTd>@context.Code</MudTd>
+                    <MudTd>@context.DiscountPercent%</MudTd>
+                    <MudTd>@(context.IsActive ? "Si" : "No")</MudTd>
+                    <MudTd><EntityActions Kind="Coupon" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+
+        <MudText Typo="Typo.subtitle1" Class="mb-2 mt-4">Salesmen</MudText>
+        @if (State.Salesmen.Count == 0) { <MudAlert Severity="Severity.Info">Nessun commerciale.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.Salesmen" Dense="true" Hover="true">
+                <HeaderContent><MudTh>ID</MudTh><MudTh>Nome</MudTh><MudTh>Identity</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd>
+                    <MudTd>@context.FullName</MudTd>
+                    <MudTd>@(context.IdentityId ?? "-")</MudTd>
+                    <MudTd><EntityActions Kind="Salesman" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+</MudTabs>
+
+@* ── EVENTI ── *@
+<MudPaper Class="pa-3 mt-4" Elevation="2" Style="max-height:250px; overflow-y:auto;">
+    <MudText Typo="Typo.h6" Class="mb-2"><MudIcon Icon="@Icons.Material.Filled.Timeline" Size="Size.Small" /> Eventi Commercial</MudText>
+    @{ var bcEvents = State.EventLog.Where(e => e.SourceBC == "Commercial" || e.TargetBC.Contains("Commercial")).Take(30).ToList(); }
+    @if (bcEvents.Count == 0) { <MudText Typo="Typo.body2" Color="Color.Secondary">Nessun evento.</MudText> }
+    else
+    {
+        <div class="d-flex flex-wrap gap-2">
+            @foreach (var evt in bcEvents)
+            {
+                <MudPaper Class="pa-2" Outlined="true" Style="min-width:250px; max-width:350px;">
+                    <div class="d-flex align-center gap-1">
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary">@evt.SourceBC</MudChip>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@evt.OccurredAt.ToString("HH:mm:ss")</MudText>
+                    </div>
+                    <MudText Typo="Typo.body2"><b>@evt.Description</b></MudText>
+                </MudPaper>
+            }
+        </div>
+    }
+</MudPaper>
+
+@code {
+    private Action _onStateChanged = null!;
+    protected override void OnInitialized() { _onStateChanged = () => InvokeAsync(StateHasChanged); State.OnStateChanged += _onStateChanged; }
+    public void Dispose() => State.OnStateChanged -= _onStateChanged;
+
+    string GetLeadName(string leadId)
+    {
+        var l = State.Leads.FirstOrDefault(x => x.Id == leadId);
+        return l == null ? leadId : $"{l.Personal.FirstName} {l.Personal.LastName}";
+    }
+
+    Color LeadColor(string s) => s switch { "ToConvert" => Color.Info, "Converted" => Color.Success, "Concluded" => Color.Default, _ => Color.Secondary };
+    Color DealColor(string s) => s switch { "ToQualify" => Color.Warning, "Qualified" or "InNegotiation" => Color.Info, "Converted" or "Active" => Color.Success, "Concluded" => Color.Default, "NotConverted" or "Cancelled" => Color.Error, _ => Color.Secondary };
+    Color QuotColor(string s) => s switch { "Draft" => Color.Default, "InProgress" => Color.Info, "Finalized" => Color.Primary, "ToVerify" or "ToAdjust" => Color.Warning, "Completed" => Color.Success, "Archived" => Color.Default, "Cancelled" => Color.Error, _ => Color.Secondary };
+    Color SBColor(string s) => s switch { "ToAccept" => Color.Default, "PendingInspection" => Color.Info, "ToComplete" => Color.Warning, "Ready" => Color.Primary, "Completed" => Color.Success, "Cancelled" => Color.Error, _ => Color.Secondary };
+}

@@ -1,0 +1,62 @@
+@page "/events"
+@inject PlaygroundState State
+@implements IDisposable
+
+<PageTitle>Event Log</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Event Log</MudText>
+
+<MudTextField @bind-Value="_filter" Label="Filtra per BC o descrizione" Adornment="Adornment.Start"
+              AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Class="mb-4" />
+
+<MudTable Items="FilteredEvents" Dense="true" Hover="true" Striped="true" Elevation="2" RowsPerPage="25">
+    <HeaderContent>
+        <MudTh>Ora</MudTh>
+        <MudTh>Origine</MudTh>
+        <MudTh>Destinazione</MudTh>
+        <MudTh>Evento</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@context.OccurredAt.ToString("HH:mm:ss.fff")</MudTd>
+        <MudTd><MudChip T="string" Size="Size.Small" Color="@GetBCColor(context.SourceBC)">@context.SourceBC</MudChip></MudTd>
+        <MudTd>
+            @foreach (var t in context.TargetBC.Split(','))
+            {
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@GetBCColor(t.Trim())">@t.Trim()</MudChip>
+            }
+        </MudTd>
+        <MudTd>@context.Description</MudTd>
+    </RowTemplate>
+    <PagerContent>
+        <MudTablePager />
+    </PagerContent>
+</MudTable>
+
+@code {
+    private string _filter = "";
+
+    private IEnumerable<WeTacoo.Domain.Events.IDomainEvent> FilteredEvents =>
+        string.IsNullOrWhiteSpace(_filter)
+            ? State.EventLog
+            : State.EventLog.Where(e =>
+                e.SourceBC.Contains(_filter, StringComparison.OrdinalIgnoreCase) ||
+                e.TargetBC.Contains(_filter, StringComparison.OrdinalIgnoreCase) ||
+                e.Description.Contains(_filter, StringComparison.OrdinalIgnoreCase));
+
+    private Action _onStateChanged = null!;
+    protected override void OnInitialized() { _onStateChanged = () => InvokeAsync(StateHasChanged); State.OnStateChanged += _onStateChanged; }
+    public void Dispose() => State.OnStateChanged -= _onStateChanged;
+
+    private Color GetBCColor(string bc) => bc switch
+    {
+        "Commercial" => Color.Primary,
+        "Operational" => Color.Warning,
+        "Execution" => Color.Success,
+        "Financial" => Color.Error,
+        "SharedKernel" => Color.Info,
+        "Identity" => Color.Dark,
+        "Marketing" => Color.Secondary,
+        "Happiness" => Color.Tertiary,
+        _ => Color.Default
+    };
+}

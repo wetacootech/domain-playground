@@ -1,0 +1,71 @@
+@page "/bc/marketing"
+@inject PlaygroundState State
+@implements IDisposable
+
+<PageTitle>Marketing BC</PageTitle>
+<MudText Typo="Typo.h4" Class="mb-2">Marketing BC</MudText>
+<MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">Pagina di sola lettura.</MudAlert>
+
+@if (State.MarketingClients.Count == 0) { <MudAlert Severity="Severity.Info">Nessun dato marketing.</MudAlert> }
+else
+{
+    @foreach (var mc in State.MarketingClients)
+    {
+        <MudCard Class="mb-3" Elevation="2">
+            <MudCardContent>
+                <div class="d-flex align-center gap-2 mb-1">
+                    <MudText Typo="Typo.h6">MarketingClient @mc.Id</MudText>
+                    <MudSpacer />
+                    <EntityActions Kind="MarketingClient" Ids="@(new[] { mc.Id })" Entity="mc" OnChanged="StateHasChanged" />
+                </div>
+                <MudText Typo="Typo.body2">Lead: @mc.CommercialLeadId</MudText>
+                <MudText Typo="Typo.body1">Funnel Step: <MudChip T="string" Size="Size.Small" Color="Color.Secondary">@mc.FunnelStep</MudChip></MudText>
+                <MudText Typo="Typo.subtitle2" Class="mt-2">MarketingDeals (@mc.Deals.Count) — Entity dentro MarketingClient</MudText>
+                @if (mc.Deals.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Nessun deal nel funnel.</MudText>
+                }
+                else
+                {
+                    <MudSimpleTable Dense="true" Elevation="0">
+                        <thead><tr><th>ID</th><th>Deal</th><th>Quotation</th><th>Funnel Step</th></tr></thead>
+                        <tbody>
+                        @foreach (var d in mc.Deals)
+                        {
+                            <tr><td style="font-family:monospace">@d.Id</td><td>@d.DealId</td><td>@(d.QuotationId ?? "—")</td><td>@d.FunnelQuotationStep</td></tr>
+                        }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+            </MudCardContent>
+        </MudCard>
+    }
+}
+
+@* ── EVENTI ── *@
+<MudPaper Class="pa-3 mt-4" Elevation="2" Style="max-height:250px; overflow-y:auto;">
+    <MudText Typo="Typo.h6" Class="mb-2"><MudIcon Icon="@Icons.Material.Filled.Timeline" Size="Size.Small" /> Eventi Marketing</MudText>
+    @{ var bcEvents = State.EventLog.Where(e => e.SourceBC == "Marketing" || e.TargetBC.Contains("Marketing")).Take(30).ToList(); }
+    @if (bcEvents.Count == 0) { <MudText Typo="Typo.body2" Color="Color.Secondary">Nessun evento.</MudText> }
+    else
+    {
+        <div class="d-flex flex-wrap gap-2">
+            @foreach (var evt in bcEvents)
+            {
+                <MudPaper Class="pa-2" Outlined="true" Style="min-width:250px; max-width:350px;">
+                    <div class="d-flex align-center gap-1">
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">@evt.SourceBC</MudChip>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@evt.OccurredAt.ToString("HH:mm:ss")</MudText>
+                    </div>
+                    <MudText Typo="Typo.body2"><b>@evt.Description</b></MudText>
+                </MudPaper>
+            }
+        </div>
+    }
+</MudPaper>
+
+@code {
+    private Action _onStateChanged = null!;
+    protected override void OnInitialized() { _onStateChanged = () => InvokeAsync(StateHasChanged); State.OnStateChanged += _onStateChanged; }
+    public void Dispose() => State.OnStateChanged -= _onStateChanged;
+}

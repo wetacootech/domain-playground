@@ -1,0 +1,314 @@
+@page "/bc/operational"
+@using WeTacoo.Domain.Operational.Enums
+@inject PlaygroundState State
+@implements IDisposable
+
+<PageTitle>Operational BC</PageTitle>
+<MudText Typo="Typo.h4" Class="mb-2">Operational BC</MudText>
+<MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
+    Pagina ispettiva fedele al dominio DDD5. <b>AR (Aggregate Root):</b> Planning, WorkOrder, Inspection, Slot, Warehouse, Vehicle, Operator.
+    <b>Entity dentro Planning:</b> Resource, PlanningTeam, Mission. Resources NON sono indipendenti — vivono dentro Planning.
+</MudAlert>
+
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+
+    @* ══════════════ WorkOrders (AR) ══════════════ *@
+    <MudTabPanel Text="@($"WorkOrders ({State.WorkOrders.Count})")">
+        @if (State.WorkOrders.Count == 0) { <MudAlert Severity="Severity.Info">Nessun WorkOrder.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.WorkOrders" Dense="true" Hover="true" Striped="true">
+                <HeaderContent>
+                    <MudTh>ID</MudTh><MudTh>Type</MudTh><MudTh>Service</MudTh><MudTh>Status</MudTh><MudTh>Scheduled</MudTh><MudTh>Address</MudTh><MudTh>ServiceBooked</MudTh><MudTh>Mission</MudTh><MudTh>Azioni</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small">@context.Type</MudChip></MudTd>
+                    <MudTd>@context.ServiceType.Type @(context.ServiceType.IsPartial ? "(Parziale)" : "") @(context.ServiceType.IsTrasloco ? "(Trasloco)" : "")</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="@WOStatusColor(context.Status)">@context.Status</MudChip></MudTd>
+                    <MudTd>@(context.ScheduledDate?.ToString("dd/MM") ?? "—")</MudTd>
+                    <MudTd>@context.ServiceAddress</MudTd>
+                    <MudTd>@(context.ServiceBookedId ?? "—")</MudTd>
+                    <MudTd>@State.Plannings.SelectMany(p => p.Missions).Count(m => m.ServiceRefs.Any(sr => sr.ServiceId == context.Id))</MudTd>
+                    <MudTd><EntityActions Kind="WorkOrder" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+
+    @* ══════════════ Inspections (AR) ══════════════ *@
+    <MudTabPanel Text="@($"Inspections ({State.Inspections.Count})")">
+        @if (State.Inspections.Count == 0) { <MudAlert Severity="Severity.Info">Nessuna Inspection (sopralluogo).</MudAlert> }
+        else
+        {
+            <MudTable Items="State.Inspections" Dense="true" Hover="true" Striped="true">
+                <HeaderContent>
+                    <MudTh>ID</MudTh><MudTh>Stato</MudTh><MudTh>ServiceBooked</MudTh><MudTh>Questionnaire</MudTh><MudTh>Caratteristiche</MudTh><MudTh>Data richiesta</MudTh><MudTh>Documenti</MudTh><MudTh>Completata</MudTh><MudTh>Azioni</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.IsCompleted ? Color.Success : context.IsCancelled ? Color.Error : Color.Info)">@context.Status</MudChip></MudTd>
+                    <MudTd>@(context.ServiceBookedId ?? "—")</MudTd>
+                    <MudTd>@(context.QuestionnaireId ?? "—")</MudTd>
+                    <MudTd>@(context.Caratteristiche ?? "—")</MudTd>
+                    <MudTd>@(context.DataRichiesta?.ToString("dd/MM/yyyy HH:mm") ?? "—")</MudTd>
+                    <MudTd>@context.Documenti.Count docs</MudTd>
+                    <MudTd>@(context.IsCompleted ? $"{context.CompletedBy} @ {context.CompletedAt?.ToString("dd/MM HH:mm")}" : "—")</MudTd>
+                    <MudTd><EntityActions Kind="Inspection" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+
+    @* ══════════════ Plannings (AR) → Resources/Teams/Missions (Entity dentro AR) ══════════════ *@
+    <MudTabPanel Text="@($"Plannings ({State.Plannings.Count})")">
+        @if (State.Plannings.Count == 0) { <MudAlert Severity="Severity.Info">Nessun Planning.</MudAlert> }
+        else
+        {
+            @foreach (var p in State.Plannings.OrderBy(pp => pp.Date))
+            {
+                <MudCard Class="mb-3" Elevation="1">
+                    <MudCardContent>
+                        <div class="d-flex align-center gap-2 mb-2">
+                            <MudIcon Icon="@Icons.Material.Filled.CalendarMonth" />
+                            <MudText Typo="Typo.h6">Planning @p.Id — @p.Date.ToString("dd/MM/yyyy")</MudText>
+                            <MudSpacer />
+                            <EntityActions Kind="Planning" Ids="@(new[] { p.Id })" Entity="p" OnChanged="StateHasChanged" />
+                        </div>
+
+                        @* ── Resources (Entity dentro Planning) ── *@
+                        <MudExpansionPanels Class="mt-2">
+                            <MudExpansionPanel Text="@($"Resources ({p.Resources.Count}) — Entity dentro Planning")">
+                                @if (p.Resources.Count == 0) { <MudText Typo="Typo.body2" Color="Color.Secondary">Nessuna risorsa pianificata.</MudText> }
+                                else
+                                {
+                                    <MudSimpleTable Dense="true" Hover="true">
+                                        <thead><tr><th>ID</th><th>Tipo</th><th>SourceId</th><th>Area</th><th>Slot</th><th>Note</th><th>Azioni</th></tr></thead>
+                                        <tbody>
+                                        @foreach (var r in p.Resources)
+                                        {
+                                            <tr>
+                                                <td style="font-family:monospace">@r.Id</td>
+                                                <td><MudChip T="string" Size="Size.Small" Color="@(r.ResourceType=="operator"?Color.Info:r.ResourceType=="vehicle"?Color.Warning:Color.Default)">@r.ResourceType</MudChip></td>
+                                                <td style="font-family:monospace">@r.SourceId — @ResolveResourceName(r)</td>
+                                                <td>@(r.AreaId ?? "—")</td>
+                                                <td>@(r.AvailabilitySlot ?? "—")</td>
+                                                <td>@(r.Notes ?? "—")</td>
+                                                <td><EntityActions Kind="Resource" Ids="@(new[] { p.Id, r.Id })" Entity="r" OnChanged="StateHasChanged" /></td>
+                                            </tr>
+                                        }
+                                        </tbody>
+                                    </MudSimpleTable>
+                                }
+                            </MudExpansionPanel>
+
+                            @* ── PlanningTeam (Entity dentro Planning) ── *@
+                            <MudExpansionPanel Text="@($"Teams ({p.Teams.Count}) — Entity dentro Planning")">
+                                @if (p.Teams.Count == 0) { <MudText Typo="Typo.body2" Color="Color.Secondary">Nessun team.</MudText> }
+                                else
+                                {
+                                    <MudSimpleTable Dense="true" Hover="true">
+                                        <thead><tr><th>ID</th><th>Operatori</th><th>Note</th><th>Azioni</th></tr></thead>
+                                        <tbody>
+                                        @foreach (var t in p.Teams)
+                                        {
+                                            <tr>
+                                                <td style="font-family:monospace">@t.Id</td>
+                                                <td>@string.Join(", ", t.OperatorIds.Select(oid => State.Operators.FirstOrDefault(o => o.Id == oid)?.FullName ?? oid))</td>
+                                                <td>@(t.Notes ?? "—")</td>
+                                                <td><EntityActions Kind="PlanningTeam" Ids="@(new[] { p.Id, t.Id })" Entity="t" OnChanged="StateHasChanged" /></td>
+                                            </tr>
+                                        }
+                                        </tbody>
+                                    </MudSimpleTable>
+                                }
+                            </MudExpansionPanel>
+
+                            @* ── Mission (Entity dentro Planning) ── *@
+                            <MudExpansionPanel Text="@($"Missions ({p.Missions.Count}) — Entity dentro Planning")">
+                                @if (p.Missions.Count == 0) { <MudText Typo="Typo.body2" Color="Color.Secondary">Nessuna mission.</MudText> }
+                                else
+                                {
+                                    @foreach (var m in p.Missions)
+                                    {
+                                        var hasShift = State.Shifts.Any(s => s.MissionId == m.Id);
+                                        <MudPaper Class="pa-2 mb-2" Outlined="true">
+                                            <div class="d-flex align-center gap-2">
+                                                <MudIcon Icon="@Icons.Material.Filled.AltRoute" Size="Size.Small" />
+                                                <MudText Typo="Typo.subtitle2"><b>Mission @m.Id</b></MudText>
+                                                @if (m.IsCancelled) { <MudChip T="string" Size="Size.Small" Color="Color.Error">Annullata</MudChip> }
+                                                else if (hasShift) { <MudChip T="string" Size="Size.Small" Color="Color.Success">Shift creato</MudChip> }
+                                                else { <MudChip T="string" Size="Size.Small" Color="Color.Warning">Da confermare</MudChip> }
+                                                <MudSpacer />
+                                                <EntityActions Kind="Mission" Ids="@(new[] { p.Id, m.Id })" Entity="m" OnChanged="StateHasChanged" />
+                                            </div>
+                                            <MudText Typo="Typo.caption" Class="d-block">Team: @(m.TeamId ?? "—") | TimeSlot: @(m.TimeSlot ?? "—")</MudText>
+                                            <MudText Typo="Typo.caption" Class="d-block">VehicleResourceIds: @string.Join(", ", m.VehicleResourceIds) | AssetResourceIds: @string.Join(", ", m.AssetResourceIds)</MudText>
+                                            @if (m.ServiceRefs.Count > 0)
+                                            {
+                                                <MudText Typo="Typo.caption" Class="mt-1"><b>ServiceRefs (VO):</b></MudText>
+                                                <MudSimpleTable Dense="true" Elevation="0">
+                                                    <thead><tr><th>ServiceId (WorkOrder)</th><th>Volume %</th><th>Override</th></tr></thead>
+                                                    <tbody>
+                                                    @foreach (var sr in m.ServiceRefs)
+                                                    {
+                                                        <tr><td>@sr.ServiceId</td><td>@sr.VolumePercentage%</td><td>@(sr.VolumeOverride ? "Si" : "No")</td></tr>
+                                                    }
+                                                    </tbody>
+                                                </MudSimpleTable>
+                                            }
+                                        </MudPaper>
+                                    }
+                                }
+                            </MudExpansionPanel>
+                        </MudExpansionPanels>
+                    </MudCardContent>
+                </MudCard>
+            }
+        }
+    </MudTabPanel>
+
+    @* ══════════════ Slots (AR) ══════════════ *@
+    <MudTabPanel Text="@($"Slots ({State.Slots.Count})")">
+        @if (State.Slots.Count == 0) { <MudAlert Severity="Severity.Info">Nessuno Slot.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.Slots" Dense="true" Hover="true">
+                <HeaderContent><MudTh>ID</MudTh><MudTh>Date</MudTh><MudTh>Area</MudTh><MudTh>Warehouse</MudTh><MudTh>Volume</MudTh><MudTh>Services</MudTh><MudTh>Time</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd>
+                    <MudTd>@context.Date.ToString("dd/MM/yyyy")</MudTd><MudTd>@context.AreaId</MudTd><MudTd>@context.WarehouseId</MudTd>
+                    <MudTd>@($"{context.UsedVolume}/{context.MaxVolume} m3")</MudTd>
+                    <MudTd>@($"{context.BookedServices}/{context.MaxServices}")</MudTd>
+                    <MudTd>@context.TimeStart - @context.TimeEnd</MudTd>
+                    <MudTd><EntityActions Kind="Slot" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+
+    @* ══════════════ Warehouses (AR indipendente) ══════════════ *@
+    <MudTabPanel Text="@($"Warehouses ({State.Warehouses.Count})")">
+        @if (State.Warehouses.Count == 0) { <MudAlert Severity="Severity.Info">Nessun magazzino.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.Warehouses" Dense="true" Hover="true">
+                <HeaderContent><MudTh>ID</MudTh><MudTh>Nome</MudTh><MudTh>Indirizzo</MudTh><MudTh>Area</MudTh><MudTh>Capacità</MudTh><MudTh>Status</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd><MudTd>@context.Name</MudTd><MudTd>@context.Address</MudTd>
+                    <MudTd>@(State.Areas.FirstOrDefault(a => a.Id == context.AreaId)?.Name ?? context.AreaId)</MudTd>
+                    <MudTd>@context.Capacity m³</MudTd><MudTd>@context.Status</MudTd>
+                    <MudTd><EntityActions Kind="Warehouse" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+
+    @* ══════════════ Vehicles (AR indipendente) ══════════════ *@
+    <MudTabPanel Text="@($"Vehicles ({State.Vehicles.Count})")">
+        @if (State.Vehicles.Count == 0) { <MudAlert Severity="Severity.Info">Nessun veicolo.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.Vehicles" Dense="true" Hover="true">
+                <HeaderContent><MudTh>ID</MudTh><MudTh>Nome</MudTh><MudTh>Targa</MudTh><MudTh>Area</MudTh><MudTh>Capacità</MudTh><MudTh>Status</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd><MudTd>@context.Name</MudTd><MudTd>@context.Plate</MudTd>
+                    <MudTd>@(State.Areas.FirstOrDefault(a => a.Id == context.AreaId)?.Name ?? context.AreaId)</MudTd>
+                    <MudTd>@context.Capacity m³</MudTd><MudTd>@context.Status</MudTd>
+                    <MudTd><EntityActions Kind="Vehicle" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+
+    @* ══════════════ Operators (AR indipendente) ══════════════ *@
+    <MudTabPanel Text="@($"Operators ({State.Operators.Count})")">
+        @if (State.Operators.Count == 0) { <MudAlert Severity="Severity.Info">Nessun operatore.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.Operators" Dense="true" Hover="true">
+                <HeaderContent><MudTh>ID</MudTh><MudTh>Nome</MudTh><MudTh>Area</MudTh><MudTh>Magazzini assegnati</MudTh><MudTh>IdentityId</MudTh><MudTh>Status</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd><MudTd>@context.FullName</MudTd>
+                    <MudTd>@(State.Areas.FirstOrDefault(a => a.Id == context.AreaId)?.Name ?? context.AreaId)</MudTd>
+                    <MudTd>@string.Join(", ", context.AssignedWarehouseIds)</MudTd>
+                    <MudTd>@(context.IdentityId ?? "—")</MudTd>
+                    <MudTd>@context.Status</MudTd>
+                    <MudTd><EntityActions Kind="Operator" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+
+    @* ══════════════ Assets (AR — DDD5 §4.5) ══════════════ *@
+    <MudTabPanel Text="@($"Assets ({State.Assets.Count})")">
+        @if (State.Assets.Count == 0) { <MudAlert Severity="Severity.Info">Nessun asset.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.Assets" Dense="true" Hover="true">
+                <HeaderContent><MudTh>ID</MudTh><MudTh>Nome</MudTh><MudTh>Tipo</MudTh><MudTh>Area</MudTh><MudTh>Status</MudTh><MudTh>Danni</MudTh><MudTh>Partner</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd><MudTd>@context.Name</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small">@context.AssetType</MudChip></MudTd>
+                    <MudTd>@(State.Areas.FirstOrDefault(a => a.Id == context.AreaId)?.Name ?? context.AreaId)</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.Status=="Available"?Color.Success:Color.Warning)">@context.Status</MudChip></MudTd>
+                    <MudTd>@context.Damages.Count</MudTd>
+                    <MudTd>@(context.PartnerName ?? "—") @(context.PartnerCost?.ToString("C") ?? "")</MudTd>
+                    <MudTd><EntityActions Kind="Asset" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+
+</MudTabs>
+
+@* ── EVENTI ── *@
+<MudPaper Class="pa-3 mt-4" Elevation="2" Style="max-height:250px; overflow-y:auto;">
+    <MudText Typo="Typo.h6" Class="mb-2"><MudIcon Icon="@Icons.Material.Filled.Timeline" Size="Size.Small" /> Eventi Operational</MudText>
+    @{ var bcEvents = State.EventLog.Where(e => e.SourceBC == "Operational" || e.TargetBC.Contains("Operational")).Take(30).ToList(); }
+    @if (bcEvents.Count == 0) { <MudText Typo="Typo.body2" Color="Color.Secondary">Nessun evento.</MudText> }
+    else
+    {
+        <div class="d-flex flex-wrap gap-2">
+            @foreach (var evt in bcEvents)
+            {
+                <MudPaper Class="pa-2" Outlined="true" Style="min-width:250px; max-width:350px;">
+                    <div class="d-flex align-center gap-1">
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">@evt.SourceBC</MudChip>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@evt.OccurredAt.ToString("HH:mm:ss")</MudText>
+                    </div>
+                    <MudText Typo="Typo.body2"><b>@evt.Description</b></MudText>
+                </MudPaper>
+            }
+        </div>
+    }
+</MudPaper>
+
+@code {
+    private Action _onStateChanged = null!;
+    protected override void OnInitialized() { _onStateChanged = () => InvokeAsync(StateHasChanged); State.OnStateChanged += _onStateChanged; }
+    public void Dispose() => State.OnStateChanged -= _onStateChanged;
+
+    private string ResolveResourceName(WeTacoo.Domain.Operational.Entities.Resource r)
+    {
+        return r.ResourceType switch
+        {
+            "operator" => State.Operators.FirstOrDefault(o => o.Id == r.SourceId)?.FullName ?? "(operator non trovato)",
+            "vehicle" => State.Vehicles.FirstOrDefault(v => v.Id == r.SourceId)?.Name ?? "(vehicle non trovato)",
+            _ => "(asset)"
+        };
+    }
+
+    Color WOStatusColor(WorkOrderStatus s) => s switch
+    {
+        WorkOrderStatus.Concluded => Color.Success,
+        WorkOrderStatus.Cancelled => Color.Error,
+        WorkOrderStatus.InExecution => Color.Warning,
+        WorkOrderStatus.Scheduled => Color.Info,
+        WorkOrderStatus.ToVerify => Color.Tertiary,
+        WorkOrderStatus.Paused => Color.Dark,
+        WorkOrderStatus.ToSchedule => Color.Default,
+        WorkOrderStatus.Completing => Color.Secondary,
+        _ => Color.Default
+    };
+}

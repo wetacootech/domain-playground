@@ -1,0 +1,67 @@
+@page "/bc/happiness"
+@inject PlaygroundState State
+@implements IDisposable
+
+<PageTitle>Happiness BC</PageTitle>
+<MudText Typo="Typo.h4" Class="mb-2">Happiness BC</MudText>
+<MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">Pagina di sola lettura.</MudAlert>
+
+@if (State.HappinessClients.Count == 0) { <MudAlert Severity="Severity.Info">Nessun dato di soddisfazione.</MudAlert> }
+else
+{
+    @foreach (var hc in State.HappinessClients)
+    {
+        <MudCard Class="mb-3" Elevation="2">
+            <MudCardContent>
+                <div class="d-flex align-center gap-2 mb-1">
+                    <MudText Typo="Typo.h6">HappinessClient @hc.Id</MudText>
+                    <MudSpacer />
+                    <EntityActions Kind="HappinessClient" Ids="@(new[] { hc.Id })" Entity="hc" OnChanged="StateHasChanged" />
+                </div>
+                <MudText Typo="Typo.body2">Lead: @hc.CommercialLeadId</MudText>
+                <MudText Typo="Typo.body1">Score medio: <b>@($"{hc.AverageScore:F1}")</b>/5</MudText>
+                <MudRating SelectedValue="@((int)Math.Round(hc.AverageScore))" ReadOnly="true" Class="mt-1" />
+
+                <MudText Typo="Typo.subtitle2" Class="mt-3">HappinessServices (@hc.Services.Count) — Entity dentro HappinessClient</MudText>
+                <MudTable Items="hc.Services" Dense="true" Elevation="0">
+                    <HeaderContent><MudTh>ID</MudTh><MudTh>ServiceId</MudTh><MudTh>Score</MudTh><MudTh>Feedback</MudTh><MudTh>Date</MudTh></HeaderContent>
+                    <RowTemplate>
+                        <MudTd style="font-family:monospace">@context.Id</MudTd>
+                        <MudTd>@context.ServiceId</MudTd>
+                        <MudTd><MudRating SelectedValue="@(context.SatisfactionScore ?? 0)" ReadOnly="true" Size="Size.Small" /></MudTd>
+                        <MudTd>@context.Feedback</MudTd>
+                        <MudTd>@context.SurveyDate?.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudCardContent>
+        </MudCard>
+    }
+}
+
+@* ── EVENTI ── *@
+<MudPaper Class="pa-3 mt-4" Elevation="2" Style="max-height:250px; overflow-y:auto;">
+    <MudText Typo="Typo.h6" Class="mb-2"><MudIcon Icon="@Icons.Material.Filled.Timeline" Size="Size.Small" /> Eventi Happiness</MudText>
+    @{ var bcEvents = State.EventLog.Where(e => e.SourceBC == "Happiness" || e.TargetBC.Contains("Happiness")).Take(30).ToList(); }
+    @if (bcEvents.Count == 0) { <MudText Typo="Typo.body2" Color="Color.Secondary">Nessun evento.</MudText> }
+    else
+    {
+        <div class="d-flex flex-wrap gap-2">
+            @foreach (var evt in bcEvents)
+            {
+                <MudPaper Class="pa-2" Outlined="true" Style="min-width:250px; max-width:350px;">
+                    <div class="d-flex align-center gap-1">
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">@evt.SourceBC</MudChip>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@evt.OccurredAt.ToString("HH:mm:ss")</MudText>
+                    </div>
+                    <MudText Typo="Typo.body2"><b>@evt.Description</b></MudText>
+                </MudPaper>
+            }
+        </div>
+    }
+</MudPaper>
+
+@code {
+    private Action _onStateChanged = null!;
+    protected override void OnInitialized() { _onStateChanged = () => InvokeAsync(StateHasChanged); State.OnStateChanged += _onStateChanged; }
+    public void Dispose() => State.OnStateChanged -= _onStateChanged;
+}

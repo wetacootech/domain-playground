@@ -1,0 +1,113 @@
+@page "/bc/financial"
+@using WeTacoo.Domain.Financial.Enums
+@inject PlaygroundState State
+@implements IDisposable
+
+<PageTitle>Financial BC</PageTitle>
+<MudText Typo="Typo.h4" Class="mb-2">Financial BC</MudText>
+<MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">Pagina di sola lettura. Creazione client, addebiti, esecuzione charge si fanno dal <b>Workspace</b>.</MudAlert>
+
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+    <MudTabPanel Text="@($"Clients ({State.FinancialClients.Count})")">
+        @if (State.FinancialClients.Count == 0) { <MudAlert Severity="Severity.Info">Nessun FinancialClient.</MudAlert> }
+        else
+        {
+            <MudTable Items="State.FinancialClients" Dense="true" Hover="true">
+                <HeaderContent><MudTh>ID</MudTh><MudTh>Lead</MudTh><MudTh>Billing</MudTh><MudTh>P.IVA</MudTh><MudTh>Health</MudTh><MudTh>Credit</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Id</MudTd><MudTd>@context.CommercialLeadId</MudTd><MudTd>@context.BillingName</MudTd>
+                    <MudTd>@context.VatNumber</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.PaymentHealth == "Good" ? Color.Success : Color.Error)">@context.PaymentHealth</MudChip></MudTd>
+                    <MudTd>@context.Credit.ToString("C")</MudTd>
+                    <MudTd><EntityActions Kind="FinancialClient" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudTabPanel>
+
+    <MudTabPanel Text="@($"Payments ({State.Payments.Count})")">
+        @if (State.Payments.Count == 0) { <MudAlert Severity="Severity.Info">Nessun Payment.</MudAlert> }
+        else
+        {
+            @foreach (var p in State.Payments)
+            {
+                <MudCard Class="mb-3" Elevation="2">
+                    <MudCardContent>
+                        <div class="d-flex align-center gap-2 mb-2">
+                            <MudText Typo="Typo.h6">Payment @p.Id</MudText>
+                            <MudChip T="string" Size="Size.Small" Color="@(p.Status == PaymentStatus.Paid ? Color.Success : Color.Warning)">@p.Status</MudChip>
+                            <MudChip T="string" Size="Size.Small">@p.PaymentType</MudChip>
+                            <MudSpacer />
+                            <EntityActions Kind="Payment" Ids="@(new[] { p.Id })" Entity="p" OnChanged="StateHasChanged" />
+                        </div>
+                        <MudText Typo="Typo.body2">Deal: @p.DealId | Total: @p.TotalAmount.ToString("C") | Paid: @p.PaidAmount.ToString("C")</MudText>
+                        <MudProgressLinear Color="Color.Success" Value="@(p.TotalAmount > 0 ? (double)(p.PaidAmount / p.TotalAmount * 100) : 0)" Class="my-2" />
+
+                        @if (p.Products.Count > 0)
+                        {
+                            <MudText Typo="Typo.subtitle2">SimplifiedProducts (@p.Products.Count) — Entity dentro Payment</MudText>
+                            <MudSimpleTable Dense="true" Elevation="0" Class="mb-2">
+                                <thead><tr><th>ID</th><th>Nome</th><th>Prezzo</th><th>Azioni</th></tr></thead>
+                                <tbody>
+                                @foreach (var prod in p.Products)
+                                {
+                                    <tr><td style="font-family:monospace">@prod.Id</td><td>@prod.Name</td><td>@prod.Price.ToString("C")</td><td><EntityActions Kind="SimplifiedProduct" Ids="@(new[] { p.Id, prod.Id })" Entity="prod" OnChanged="StateHasChanged" /></td></tr>
+                                }
+                                </tbody>
+                            </MudSimpleTable>
+                        }
+
+                        <MudText Typo="Typo.subtitle2" Class="mt-2">Charges (@p.Charges.Count) — Entity dentro Payment</MudText>
+                        <MudTable Items="p.Charges" Dense="true" Elevation="0">
+                            <HeaderContent><MudTh>ID</MudTh><MudTh>Amount</MudTh><MudTh>Status</MudTh><MudTh>Due</MudTh><MudTh>Executed</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.Id</MudTd><MudTd>@context.Amount.ToString("C")</MudTd>
+                                <MudTd><MudChip T="string" Size="Size.Small" Color="@ChargeColor(context.Status)">@context.Status</MudChip></MudTd>
+                                <MudTd>@context.DueDate?.ToString("dd/MM/yyyy")</MudTd><MudTd>@context.ExecutedAt?.ToString("dd/MM HH:mm")</MudTd>
+                                <MudTd><EntityActions Kind="Charge" Ids="@(new[] { p.Id, context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudCardContent>
+                </MudCard>
+            }
+        }
+    </MudTabPanel>
+</MudTabs>
+
+@* ── EVENTI ── *@
+<MudPaper Class="pa-3 mt-4" Elevation="2" Style="max-height:250px; overflow-y:auto;">
+    <MudText Typo="Typo.h6" Class="mb-2"><MudIcon Icon="@Icons.Material.Filled.Timeline" Size="Size.Small" /> Eventi Financial</MudText>
+    @{ var bcEvents = State.EventLog.Where(e => e.SourceBC == "Financial" || e.TargetBC.Contains("Financial")).Take(30).ToList(); }
+    @if (bcEvents.Count == 0) { <MudText Typo="Typo.body2" Color="Color.Secondary">Nessun evento.</MudText> }
+    else
+    {
+        <div class="d-flex flex-wrap gap-2">
+            @foreach (var evt in bcEvents)
+            {
+                <MudPaper Class="pa-2" Outlined="true" Style="min-width:250px; max-width:350px;">
+                    <div class="d-flex align-center gap-1">
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error">@evt.SourceBC</MudChip>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@evt.OccurredAt.ToString("HH:mm:ss")</MudText>
+                    </div>
+                    <MudText Typo="Typo.body2"><b>@evt.Description</b></MudText>
+                </MudPaper>
+            }
+        </div>
+    }
+</MudPaper>
+
+@code {
+    private Action _onStateChanged = null!;
+    protected override void OnInitialized() { _onStateChanged = () => InvokeAsync(StateHasChanged); State.OnStateChanged += _onStateChanged; }
+    public void Dispose() => State.OnStateChanged -= _onStateChanged;
+
+    private Color ChargeColor(ChargeStatus status) => status switch
+    {
+        ChargeStatus.Pending => Color.Warning,
+        ChargeStatus.Executed => Color.Success,
+        ChargeStatus.Failed => Color.Error,
+        ChargeStatus.Postponed => Color.Info,
+        ChargeStatus.Refunded => Color.Default,
+        _ => Color.Default
+    };
+}

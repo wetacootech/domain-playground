@@ -1,0 +1,38 @@
+@inject IDialogService DialogService
+@inject EntityAdminService Admin
+
+<span style="display:inline-flex; gap:2px">
+    @if (Entity != null)
+    {
+        <MudTooltip Text="Modifica forzata">
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="Edit" Color="Color.Primary" />
+        </MudTooltip>
+    }
+    <MudTooltip Text="Elimina (cascade)">
+        <MudIconButton Icon="@Icons.Material.Filled.DeleteForever" Size="Size.Small" OnClick="Delete" Color="Color.Error" />
+    </MudTooltip>
+</span>
+
+@code {
+    [Parameter] public string Kind { get; set; } = "";
+    [Parameter] public string[] Ids { get; set; } = [];
+    [Parameter] public object? Entity { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private async Task Edit()
+    {
+        if (Entity == null) return;
+        var parameters = new DialogParameters { ["Entity"] = Entity };
+        var dlg = await DialogService.ShowAsync<EntityEditDialog>("Modifica", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var res = await dlg.Result;
+        if (res is { Canceled: false }) await OnChanged.InvokeAsync();
+    }
+
+    private async Task Delete()
+    {
+        var parameters = new DialogParameters { ["Kind"] = Kind, ["Ids"] = Ids };
+        var dlg = await DialogService.ShowAsync<ConfirmDeleteDialog>("Elimina", parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var res = await dlg.Result;
+        if (res is { Canceled: false }) await OnChanged.InvokeAsync();
+    }
+}

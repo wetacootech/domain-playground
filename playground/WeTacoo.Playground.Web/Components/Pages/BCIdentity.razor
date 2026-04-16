@@ -1,0 +1,47 @@
+@page "/bc/identity"
+@inject PlaygroundState State
+@implements IDisposable
+
+<PageTitle>Identity BC</PageTitle>
+<MudText Typo="Typo.h4" Class="mb-2">Identity BC</MudText>
+<MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">Pagina di sola lettura.</MudAlert>
+
+<MudTable Items="State.Users" Dense="true" Hover="true" Striped="true" Elevation="2">
+    <HeaderContent><MudTh>ID</MudTh><MudTh>Email</MudTh><MudTh>Role</MudTh><MudTh>Active</MudTh><MudTh>Claims</MudTh><MudTh>Tipo</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+    <RowTemplate>
+        <MudTd>@context.Id</MudTd><MudTd>@context.Email</MudTd>
+        <MudTd><MudChip T="string" Size="Size.Small">@context.Role</MudChip></MudTd>
+        <MudTd>@(context.IsActive ? "Yes" : "No")</MudTd>
+        <MudTd>@string.Join(", ", context.Claims)</MudTd>
+        <MudTd>@context.GetType().Name</MudTd>
+        <MudTd><EntityActions Kind="User" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
+    </RowTemplate>
+</MudTable>
+
+@* ── EVENTI ── *@
+<MudPaper Class="pa-3 mt-4" Elevation="2" Style="max-height:250px; overflow-y:auto;">
+    <MudText Typo="Typo.h6" Class="mb-2"><MudIcon Icon="@Icons.Material.Filled.Timeline" Size="Size.Small" /> Eventi Identity</MudText>
+    @{ var bcEvents = State.EventLog.Where(e => e.SourceBC == "Identity" || e.TargetBC.Contains("Identity")).Take(30).ToList(); }
+    @if (bcEvents.Count == 0) { <MudText Typo="Typo.body2" Color="Color.Secondary">Nessun evento.</MudText> }
+    else
+    {
+        <div class="d-flex flex-wrap gap-2">
+            @foreach (var evt in bcEvents)
+            {
+                <MudPaper Class="pa-2" Outlined="true" Style="min-width:250px; max-width:350px;">
+                    <div class="d-flex align-center gap-1">
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">@evt.SourceBC</MudChip>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@evt.OccurredAt.ToString("HH:mm:ss")</MudText>
+                    </div>
+                    <MudText Typo="Typo.body2"><b>@evt.Description</b></MudText>
+                </MudPaper>
+            }
+        </div>
+    }
+</MudPaper>
+
+@code {
+    private Action _onStateChanged = null!;
+    protected override void OnInitialized() { _onStateChanged = () => InvokeAsync(StateHasChanged); State.OnStateChanged += _onStateChanged; }
+    public void Dispose() => State.OnStateChanged -= _onStateChanged;
+}

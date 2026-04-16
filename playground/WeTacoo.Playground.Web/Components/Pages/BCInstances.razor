@@ -1,0 +1,427 @@
+@page "/bc/instances"
+@using System.Collections
+@using WeTacoo.Playground.Web.Services
+@inject PlaygroundState State
+
+<PageTitle>Schema Istanze</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.False" Class="pa-4">
+    <MudText Typo="Typo.h4" Class="mb-1">Schema Istanze — Relazioni + Stato</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+        Albero di composizione (Entity arancio, VO giallo) con dati scalari nei blocchi. Frecce tratteggiate = riferimenti cross-AR.
+    </MudText>
+
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="3">
+            <div style="position:sticky; top:10px;">
+                @foreach (var bc in _bcOrder)
+                {
+                    var bcArs = _arCollections.Where(x => DependencyGraphBuilder.BcOf(x.ArType) == bc).ToList();
+                    if (bcArs.Count == 0) continue;
+                    <div class="bc-group mb-2">
+                        <div class="bc-group-header">@bc</div>
+                        <div class="bc-group-body">
+                            @foreach (var (arType, items) in bcArs)
+                            {
+                                var isSel = _selectedArType == arType.Name;
+                                <div class="ar-nav @(isSel ? "selected" : "")" @onclick="@(() => SelectAr(arType.Name))">
+                                    <span>@arType.Name</span>
+                                    <span class="ar-count">@items.Count</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </MudItem>
+
+        <MudItem xs="12" md="9">
+            @if (_selectedArType == null)
+            {
+                <MudAlert Severity="Severity.Info">Seleziona un AR dalla lista a sinistra.</MudAlert>
+            }
+            else
+            {
+                var bucket = _arCollections.FirstOrDefault(x => x.ArType.Name == _selectedArType);
+                if (bucket.Items == null || bucket.Items.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info">Nessuna istanza di <b>@_selectedArType</b>.</MudAlert>
+                }
+                else
+                {
+                    <MudPaper Class="pa-2 mb-3">
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">Istanze di @_selectedArType (@bucket.Items.Count)</MudText>
+                        <div class="d-flex flex-wrap gap-2">
+                            @foreach (var item in bucket.Items.Cast<object>())
+                            {
+                                var view = InstanceInspector.Inspect(item);
+                                var isSel = _selectedId == view.Id;
+                                <div class="inst-chip @(isSel ? "selected" : "")" @onclick="@(() => _selectedId = view.Id)">
+                                    <b>@view.Id</b> — <span class="label">@view.Label</span>
+                                </div>
+                            }
+                        </div>
+                    </MudPaper>
+
+                    @if (_selectedId != null)
+                    {
+                        var selected = bucket.Items.Cast<object>().FirstOrDefault(o =>
+                            InstanceInspector.Inspect(o).Id == _selectedId);
+                        if (selected != null)
+                        {
+                            var graph = DependencyGraphBuilder.Build(selected, _arCollections);
+                            var L = ComputeLayout(graph);
+                            @RenderCanvas(graph, L)
+                        }
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Seleziona un'istanza.</MudText>
+                    }
+                }
+            }
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+<style>
+    .bc-group { border: 2px solid #6c8ebf; border-radius: 5px; background: #f4f8ff; }
+    .bc-group-header { background: #dae8fc; color: #1a3a6b; font-weight: 600; font-size: 0.92rem; padding: 5px 10px; border-bottom: 1px solid #6c8ebf; border-radius: 3px 3px 0 0; }
+    .bc-group-body { padding: 4px; }
+    .ar-nav { padding: 4px 8px; border-radius: 3px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 0.84rem; }
+    .ar-nav:hover { background: #fff; }
+    .ar-nav.selected { background: #f8cecc; font-weight: 600; color: #6b1f1e; }
+    .ar-count { background: #eee; border-radius: 10px; padding: 1px 7px; font-size: 0.7rem; color: #555; }
+    .ar-nav.selected .ar-count { background: #fff; }
+
+    .inst-chip { padding: 4px 10px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 0.82rem; background: #fafafa; }
+    .inst-chip:hover { background: #f0f4ff; border-color: #6c8ebf; }
+    .inst-chip.selected { background: #dae8fc; border-color: #6c8ebf; font-weight: 600; }
+    .inst-chip .label { color: #666; }
+
+    .graph-wrap { background: #fafafa; border: 1px dashed #bbb; border-radius: 6px; padding: 10px; overflow: auto; }
+    .graph-legend { display: flex; gap: 18px; align-items: center; font-size: 0.75rem; color: #555; margin-bottom: 10px; flex-wrap: wrap; }
+    .graph-legend .swatch { display: inline-block; width: 16px; height: 12px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+
+    .canvas { position: relative; }
+    .canvas svg.edges-layer { position: absolute; top: 0; left: 0; pointer-events: none; }
+
+    .gbox { position: absolute; border-radius: 4px; border: 2px solid; font-size: 11px; box-sizing: border-box; cursor: pointer; overflow: hidden; background: #fff; }
+    .gbox.ar-center { background: #f8cecc; border-color: #b85450; color: #6b1f1e; }
+    .gbox.ar-other { background: #fff; border-color: #b85450; color: #6b1f1e; }
+    .gbox.entity { background: #fff8f0; border-color: #d79b00; color: #8a5a00; }
+    .gbox.entity .gbox-header { background: #ffe6cc; }
+    .gbox.vo { background: #fff8dc; border-color: #d6b656; color: #6b5612; }
+    .gbox.vo .gbox-header { background: #fff2cc; }
+    .gbox.ar-center .gbox-header { background: #f8cecc; }
+    .gbox.ar-other .gbox-header { background: #fff0ef; }
+
+    .gbox-header { padding: 2px 6px; font-style: italic; font-weight: 700; border-bottom: 1px solid currentColor; display: flex; justify-content: space-between; align-items: center; }
+    .gbox-header .id { font-family: monospace; font-style: normal; font-weight: 500; font-size: 10px; opacity: 0.8; }
+    .gbox-label { padding: 2px 6px; font-size: 10px; color: #444; border-bottom: 1px dashed #ddd; background: rgba(255,255,255,0.4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .gbox-rows { padding: 2px 6px; }
+    .gbox-rows .row { display: flex; justify-content: space-between; gap: 6px; line-height: 14px; font-size: 10px; border-bottom: 1px dotted #eee; }
+    .gbox-rows .row:last-child { border-bottom: 0; }
+    .gbox-rows .row .n { font-weight: 600; opacity: 0.75; }
+    .gbox-rows .row .v { font-family: monospace; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+    .gbox-rows .overflow { font-size: 9px; font-style: italic; opacity: 0.7; padding: 1px 0; }
+
+    .gedge-contain { stroke: #d79b00; stroke-width: 2; fill: none; }
+    .gedge-contain.vo-contain { stroke: #d6b656; }
+    .gedge-ref { stroke: #3f72af; stroke-width: 1.5; fill: none; stroke-dasharray: 4 3; }
+    .gedge-label { font-size: 10px; font-family: monospace; }
+    .gedge-label.contain { fill: #8a5a00; }
+    .gedge-label.ref { fill: #3f72af; }
+</style>
+
+@code {
+    private List<(Type ArType, IList Items)> _arCollections = new();
+    private List<string> _bcOrder = new();
+    private string? _selectedArType;
+    private string? _selectedId;
+
+    // Layout constants
+    private const int NodeW = 220;
+    private const int RowH = 14;
+    private const int HeaderH = 22;
+    private const int LabelH = 16;
+    private const int RowsPadY = 4;
+    private const int MaxRows = 6;
+    private const int NodeGapY = 14;
+    private const int ColGapX = 90;
+    private const int PadX = 14;
+    private const int PadY = 14;
+    private const int SideNodeH = 56; // fixed height for incoming/outgoing side nodes
+
+    private record NodeBox(int X, int Y, int W, int H);
+
+    private record Layout(
+        Dictionary<TreeNode, NodeBox> TreePositions,
+        Dictionary<(string type, string id), NodeBox> KeyedPositions,
+        int TotalWidth,
+        int TotalHeight,
+        List<(GraphNode node, NodeBox box)> IncomingNodes,
+        List<(GraphEdge edge, NodeBox fromBox, NodeBox toBox)> IncomingEdges,
+        List<(GraphNode node, NodeBox box)> OutgoingNodes,
+        List<(GraphEdge edge, NodeBox fromBox, NodeBox toBox)> OutgoingEdges);
+
+    protected override void OnInitialized()
+    {
+        _arCollections = InstanceInspector.GetArCollections(State)
+            .OrderBy(x => DependencyGraphBuilder.BcOf(x.ArType))
+            .ThenBy(x => x.ArType.Name)
+            .ToList();
+        _bcOrder = DomainSchemaInspector.GetBcOrder();
+        State.OnStateChanged += OnStateChanged;
+    }
+
+    public void Dispose() => State.OnStateChanged -= OnStateChanged;
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+    private void SelectAr(string arName) { _selectedArType = arName; _selectedId = null; }
+
+    // ── Layout ───────────────────────────────────────────────────────────
+    private int ComputeNodeHeight(GraphNode node)
+    {
+        if (node.Kind == NodeKind.ValueObject)
+            return HeaderH + LabelH + 4; // just header + label line
+        var rows = InstanceInspector.GetScalarRows(node.Instance);
+        int shown = Math.Min(rows.Count, MaxRows);
+        int overflow = rows.Count - shown > 0 ? 11 : 0;
+        return HeaderH + LabelH + RowsPadY * 2 + shown * RowH + overflow + 2;
+    }
+
+    private int ComputeSideNodeHeight(GraphNode n)
+    {
+        // side nodes are compact (no rows)
+        return HeaderH + LabelH + 4;
+    }
+
+    private Layout ComputeLayout(DependencyGraph g)
+    {
+        int treeBaseX = PadX + NodeW + ColGapX;
+        var positions = new Dictionary<TreeNode, NodeBox>();
+        int maxDepth = 0;
+        int treeHeight = LayoutTree(g.Root, depth: 0, startY: PadY, positions, treeBaseX, ref maxDepth);
+
+        int outgoingX = treeBaseX + (maxDepth + 1) * (NodeW + ColGapX);
+        int incomingX = PadX;
+
+        int sideH = SideNodeH;
+        int incomingSpace = g.Incoming.Count * sideH + Math.Max(0, g.Incoming.Count - 1) * NodeGapY;
+        int outgoingSpace = g.Outgoing.Count * sideH + Math.Max(0, g.Outgoing.Count - 1) * NodeGapY;
+        int totalHeight = Math.Max(treeHeight + PadY, Math.Max(incomingSpace, outgoingSpace)) + PadY * 2;
+
+        var keyed = new Dictionary<(string, string), NodeBox>();
+        foreach (var kv in positions)
+            keyed[(kv.Key.Node.Type, kv.Key.Node.Id)] = kv.Value;
+
+        var incomingNodes = new List<(GraphNode, NodeBox)>();
+        var incomingEdges = new List<(GraphEdge, NodeBox, NodeBox)>();
+        for (int i = 0; i < g.Incoming.Count; i++)
+        {
+            int y = DistributeY(i, g.Incoming.Count, totalHeight, sideH);
+            var box = new NodeBox(incomingX, y, NodeW, sideH);
+            incomingNodes.Add((g.Incoming[i].From, box));
+            if (keyed.TryGetValue((g.Incoming[i].To.Type, g.Incoming[i].To.Id), out var toBox))
+                incomingEdges.Add((g.Incoming[i], box, toBox));
+        }
+        var outgoingNodes = new List<(GraphNode, NodeBox)>();
+        var outgoingEdges = new List<(GraphEdge, NodeBox, NodeBox)>();
+        for (int i = 0; i < g.Outgoing.Count; i++)
+        {
+            int y = DistributeY(i, g.Outgoing.Count, totalHeight, sideH);
+            var box = new NodeBox(outgoingX, y, NodeW, sideH);
+            outgoingNodes.Add((g.Outgoing[i].To, box));
+            if (keyed.TryGetValue((g.Outgoing[i].From.Type, g.Outgoing[i].From.Id), out var fromBox))
+                outgoingEdges.Add((g.Outgoing[i], fromBox, box));
+        }
+
+        int totalWidth = outgoingX + NodeW + PadX;
+        return new Layout(positions, keyed, totalWidth, totalHeight, incomingNodes, incomingEdges, outgoingNodes, outgoingEdges);
+    }
+
+    private int LayoutTree(TreeNode n, int depth, int startY,
+        Dictionary<TreeNode, NodeBox> positions, int baseX, ref int maxDepth)
+    {
+        if (depth > maxDepth) maxDepth = depth;
+        int x = baseX + depth * (NodeW + ColGapX);
+        int h = ComputeNodeHeight(n.Node);
+        if (n.Children.Count == 0)
+        {
+            positions[n] = new NodeBox(x, startY, NodeW, h);
+            return h + NodeGapY;
+        }
+        int ys = startY;
+        int totalH = 0;
+        foreach (var c in n.Children)
+        {
+            int ch = LayoutTree(c, depth + 1, ys, positions, baseX, ref maxDepth);
+            ys += ch;
+            totalH += ch;
+        }
+        int selfY = startY + totalH / 2 - h / 2;
+        positions[n] = new NodeBox(x, selfY, NodeW, h);
+        return Math.Max(totalH, h + NodeGapY);
+    }
+
+    private int DistributeY(int i, int count, int totalHeight, int nodeH)
+    {
+        if (count <= 0) return PadY;
+        if (count == 1) return (totalHeight - nodeH) / 2;
+        int available = totalHeight - PadY * 2 - nodeH;
+        return PadY + (int)(available * ((double)i / (count - 1)));
+    }
+
+    // ── Rendering ─────────────────────────────────────────────────────────
+    private RenderFragment RenderCanvas(DependencyGraph g, Layout L) => __builder =>
+    {
+        <div class="graph-wrap">
+            <div class="graph-legend">
+                <span><span class="swatch" style="background:#f8cecc;border:1px solid #b85450;"></span>AR (selezionato)</span>
+                <span><span class="swatch" style="background:#fff;border:1px solid #b85450;"></span>AR correlato</span>
+                <span><span class="swatch" style="background:#ffe6cc;border:1px solid #d79b00;"></span>Entity</span>
+                <span><span class="swatch" style="background:#fff2cc;border:1px solid #d6b656;"></span>Value Object</span>
+                <span><span class="swatch" style="background:#d79b00;"></span>contiene</span>
+                <span><span class="swatch" style="background:repeating-linear-gradient(90deg,#3f72af 0 3px,transparent 3px 6px);"></span>riferimento</span>
+                <span class="ms-auto">@g.Incoming.Count in • @(L.TreePositions.Count - 1) contenuti • @g.Outgoing.Count out</span>
+            </div>
+            <div class="canvas" style="width:@(L.TotalWidth)px;height:@(L.TotalHeight)px;">
+                @* SVG layer for edges *@
+                <svg class="edges-layer" width="@L.TotalWidth" height="@L.TotalHeight" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <marker id="arrow-ref" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                            <polygon points="0 0, 10 3, 0 6" fill="#3f72af" />
+                        </marker>
+                        <marker id="arrow-contain" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                            <polygon points="0 0, 10 3, 0 6" fill="#d79b00" />
+                        </marker>
+                    </defs>
+
+                    @* Contain edges in tree *@
+                    @foreach (var kv in L.TreePositions)
+                    {
+                        var parent = kv.Key;
+                        var pbox = kv.Value;
+                        foreach (var child in parent.Children)
+                        {
+                            if (!L.TreePositions.TryGetValue(child, out var cbox)) continue;
+                            var x1 = pbox.X + pbox.W;
+                            var y1 = pbox.Y + pbox.H / 2;
+                            var x2 = cbox.X;
+                            var y2 = cbox.Y + cbox.H / 2;
+                            var isVo = child.Node.Kind == NodeKind.ValueObject;
+                            var lbl = child.FromParentIsList ? child.FromParentField + " [N]" : child.FromParentField;
+                            @RenderContainPath(x1, y1, x2, y2, lbl ?? "", isVo)
+                        }
+                    }
+
+                    @* Incoming ref edges *@
+                    @foreach (var (edge, fromBox, toBox) in L.IncomingEdges)
+                    {
+                        @RenderRefPath(fromBox.X + fromBox.W, fromBox.Y + fromBox.H / 2,
+                            toBox.X, toBox.Y + toBox.H / 2, edge.FieldName, edge.IsList)
+                    }
+
+                    @* Outgoing ref edges *@
+                    @foreach (var (edge, fromBox, toBox) in L.OutgoingEdges)
+                    {
+                        @RenderRefPath(fromBox.X + fromBox.W, fromBox.Y + fromBox.H / 2,
+                            toBox.X, toBox.Y + toBox.H / 2, edge.FieldName, edge.IsList)
+                    }
+                </svg>
+
+                @* HTML node boxes (overlay) *@
+                @foreach (var (n, box) in L.IncomingNodes)
+                {
+                    @RenderBox(n, box, detailed: false)
+                }
+                @foreach (var (n, box) in L.OutgoingNodes)
+                {
+                    @RenderBox(n, box, detailed: false)
+                }
+                @foreach (var kv in L.TreePositions)
+                {
+                    @RenderBox(kv.Key.Node, kv.Value, detailed: true)
+                }
+            </div>
+        </div>
+    };
+
+    private RenderFragment RenderBox(GraphNode n, NodeBox b, bool detailed) => __builder =>
+    {
+        string cls = n.Kind switch
+        {
+            NodeKind.ValueObject => "vo",
+            NodeKind.Entity => "entity",
+            _ => IsCenter(n) ? "ar-center" : "ar-other"
+        };
+        string style = $"left:{b.X}px;top:{b.Y}px;width:{b.W}px;height:{b.H}px;";
+
+        <div class="gbox @cls" style="@style" @onclick="@(() => Navigate(n))">
+            <div class="gbox-header">
+                <span>@n.Type</span>
+                @if (n.Kind != NodeKind.ValueObject)
+                {
+                    <span class="id">@n.Id</span>
+                }
+            </div>
+            <div class="gbox-label" title="@n.Label">@TruncateMiddle(n.Label, 44)</div>
+            @if (detailed && n.Kind != NodeKind.ValueObject)
+            {
+                var rows = InstanceInspector.GetScalarRows(n.Instance);
+                var shown = rows.Take(MaxRows).ToList();
+                var extra = rows.Count - shown.Count;
+                <div class="gbox-rows">
+                    @foreach (var (name, value, _) in shown)
+                    {
+                        <div class="row">
+                            <span class="n">@name</span>
+                            <span class="v" title="@value">@value</span>
+                        </div>
+                    }
+                    @if (extra > 0)
+                    {
+                        <div class="overflow">+ @extra altri campi</div>
+                    }
+                </div>
+            }
+        </div>
+    };
+
+    private bool IsCenter(GraphNode n) => _selectedArType == n.Type && _selectedId == n.Id;
+
+    private RenderFragment RenderContainPath(int x1, int y1, int x2, int y2, string field, bool isVo) => __builder =>
+    {
+        var cx = (x1 + x2) / 2;
+        var d = $"M {x1} {y1} C {cx} {y1}, {cx} {y2}, {x2} {y2}";
+        var tx = (x1 + x2) / 2;
+        var ty = (y1 + y2) / 2 - 4;
+        var pathCls = isVo ? "gedge-contain vo-contain" : "gedge-contain";
+        <path class="@pathCls" d="@d" marker-end="url(#arrow-contain)" />
+        <svg:text class="gedge-label contain" x="@tx" y="@ty" text-anchor="middle">@field</svg:text>
+    };
+
+    private RenderFragment RenderRefPath(int x1, int y1, int x2, int y2, string field, bool isList) => __builder =>
+    {
+        var cx = (x1 + x2) / 2;
+        var d = $"M {x1} {y1} C {cx} {y1}, {cx} {y2}, {x2} {y2}";
+        var tx = (x1 + x2) / 2;
+        var ty = (y1 + y2) / 2 - 4;
+        var lbl = isList ? field + " [N]" : field;
+        <path class="gedge-ref" d="@d" marker-end="url(#arrow-ref)" />
+        <svg:text class="gedge-label ref" x="@tx" y="@ty" text-anchor="middle">@lbl</svg:text>
+    };
+
+    private static string TruncateMiddle(string s, int max)
+    {
+        if (string.IsNullOrEmpty(s) || s.Length <= max) return s;
+        return s[..(max - 1)] + "…";
+    }
+
+    private void Navigate(GraphNode n)
+    {
+        if (n.Kind != NodeKind.AR) return;
+        _selectedArType = n.Type;
+        _selectedId = n.Id;
+    }
+}

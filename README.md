@@ -1,0 +1,1 @@
+Per avviare il progetto: decoprimere dist.zip, poi dist/Avvia Playground (aprirà una pagina sul browser)
