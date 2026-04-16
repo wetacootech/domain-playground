@@ -48,7 +48,7 @@ public class UC5_SopralluogoTests
         var svc = new ServiceBooked
         {
             Type = ServiceBookedType.Ritiro,
-            ServiceAddress = new Address("Via Test 1", "Milano", "20100", "area-mi")
+            ServiceAddress = new Address("20100", "area-mi")
         };
         Assert.Equal(ServiceBookedStatus.ToAccept, svc.Status);
 

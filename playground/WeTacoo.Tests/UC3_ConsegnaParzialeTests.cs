@@ -58,7 +58,7 @@ public class UC3_ConsegnaParzialeTests
         deliveryQuotation.Services.Add(new ServiceBooked
         {
             Type = ServiceBookedType.Consegna,
-            ServiceAddress = new Address("Via Garibaldi 3", "Milano", "20100", "area-mi"),
+            ServiceAddress = new Address("20100", "area-mi"),
             SelectedObjectIds = ["obj-divano", "obj-libreria"]
         });
         deliveryQuotation.Products.Add(new Product { Name = "Consegna parziale", Price = 120m });

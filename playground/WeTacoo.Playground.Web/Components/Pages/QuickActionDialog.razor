@@ -1,4 +1,4 @@
-﻿@inject PlaygroundState State
+@inject PlaygroundState State
 @inject ISnackbar Snackbar
 
 <MudDialog>
@@ -11,19 +11,10 @@
             <MudItem xs="6"><MudTextField @bind-Value="_lastName" Label="Cognome" Required="true" /></MudItem>
             <MudItem xs="6"><MudTextField @bind-Value="_email" Label="Email" Required="true" /></MudItem>
             <MudItem xs="6"><MudTextField @bind-Value="_phone" Label="Telefono" /></MudItem>
-            <MudItem xs="8"><MudTextField @bind-Value="_street" Label="Via" /></MudItem>
-            <MudItem xs="4"><MudTextField @bind-Value="_city" Label="Citta" /></MudItem>
-            <MudItem xs="6">
-                <MudSelect @bind-Value="_areaId" Label="Area" T="string">
-                    @foreach (var a in State.Areas)
-                    { <MudSelectItem T="string" Value="@a.Id">@a.Name</MudSelectItem> }
-                </MudSelect>
-            </MudItem>
+            <MudItem xs="6"><MudTextField @bind-Value="_zipCode" Label="CAP origine" /></MudItem>
             @if (_preset == "trasloco")
             {
-                <MudItem xs="12"><MudDivider /><MudText Typo="Typo.subtitle2" Class="mt-2">Destinazione</MudText></MudItem>
-                <MudItem xs="8"><MudTextField @bind-Value="_destStreet" Label="Via destinazione" /></MudItem>
-                <MudItem xs="4"><MudTextField @bind-Value="_destCity" Label="Citta destinazione" /></MudItem>
+                <MudItem xs="6"><MudTextField @bind-Value="_destZipCode" Label="CAP destinazione" /></MudItem>
             }
         </MudGrid>
     </DialogContent>
@@ -40,9 +31,8 @@
 
     private string _preset = "deposito";
     private string _firstName = "", _lastName = "", _email = "", _phone = "";
-    private string _street = "", _city = "";
-    private string _destStreet = "", _destCity = "";
-    private string? _areaId;
+    private string _zipCode = "";
+    private string _destZipCode = "";
 
     private void Cancel() => MudDialog.Cancel();
 
@@ -65,15 +55,15 @@
         var mkt = new WeTacoo.Domain.Marketing.MarketingClient { CommercialLeadId = lead.Id, FunnelStep = "LeadCreated" };
         State.MarketingClients.Add(mkt);
 
-        // Deal — il Type viene derivato dalle Quotation: sara' Recurring all'accettazione della Quotation con DraftPlan
-        var deal = new WeTacoo.Domain.Commercial.Deal { LeadId = lead.Id, AreaId = _areaId };
+        // Deal — l'Area non e' piu' richiesta a livello Deal (review 2026-04-16). Il Type viene derivato dalle Quotation.
+        var deal = new WeTacoo.Domain.Commercial.Deal { LeadId = lead.Id };
         State.Deals.Add(deal);
         lead.AddDeal(deal.Id);
         mkt.AddDeal(deal.Id);
         State.PublishEvent(new WeTacoo.Domain.Events.DealCreatedEvent(deal.Id, lead.Id));
 
         // First Quotation with auto services
-        var addr = new WeTacoo.Domain.Commercial.ValueObjects.Address(_street, _city, "", _areaId);
+        var addr = new WeTacoo.Domain.Commercial.ValueObjects.Address(_zipCode);
         var services = new List<WeTacoo.Domain.Commercial.Entities.ServiceBooked>();
         services.Add(new WeTacoo.Domain.Commercial.Entities.ServiceBooked
         {
@@ -82,7 +72,7 @@
         });
         if (_preset == "trasloco")
         {
-            var destAddr = new WeTacoo.Domain.Commercial.ValueObjects.Address(_destStreet, _destCity, "", _areaId);
+            var destAddr = new WeTacoo.Domain.Commercial.ValueObjects.Address(_destZipCode);
             services.Add(new WeTacoo.Domain.Commercial.Entities.ServiceBooked
             {
                 Type = WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Consegna,
@@ -101,7 +91,7 @@
         {
             quotation.DraftPlans.Add(new WeTacoo.Domain.Commercial.Entities.DraftPlan
             {
-                Description = "Piano deposito", MonthlyFee = 89.90m, EstimatedM3 = 10, AreaId = _areaId
+                Description = "Piano deposito", MonthlyFee = 89.90m, EstimatedM3 = 10
             });
         }
         deal.Quotations.Add(quotation);

@@ -58,6 +58,41 @@ public static class DependencyGraphBuilder
         return new DependencyGraph(root, Dedup(incoming), Dedup(outgoing));
     }
 
+    // VO types nascoste dalla vista istanze (review 2026-04-16): Address e' rumore eccessivo.
+    private static readonly HashSet<string> HiddenVoTypes = new() { "Address" };
+
+    /// Costruisce una label leggibile per un VO: "prop1=val1, prop2=[a,b,c], ..."
+    private static string BuildVoLabel(object instance, Type t)
+    {
+        var parts = new List<string>();
+        foreach (var p in t.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        {
+            if (!p.CanRead || p.GetIndexParameters().Length > 0) continue;
+            object? v;
+            try { v = p.GetValue(instance); } catch { v = null; }
+            parts.Add($"{p.Name}={FormatVoValue(v)}");
+        }
+        return parts.Count > 0 ? "{ " + string.Join(", ", parts) + " }" : t.Name;
+    }
+
+    private static string FormatVoValue(object? v)
+    {
+        if (v == null) return "—";
+        if (v is string s) return string.IsNullOrEmpty(s) ? "\"\"" : s;
+        if (v is IList list)
+        {
+            if (list.Count == 0) return "[]";
+            var items = new List<string>();
+            foreach (var item in list)
+            {
+                items.Add(item?.ToString() ?? "—");
+                if (items.Count >= 4) { items.Add($"…+{list.Count - 4}"); break; }
+            }
+            return "[" + string.Join(",", items) + "]";
+        }
+        return v.ToString() ?? "—";
+    }
+
     private static TreeNode BuildTree(object instance, string? fromField, bool isList, int currentDepth)
     {
         var node = MakeNode(instance);
@@ -78,9 +113,11 @@ public static class DependencyGraphBuilder
                             children.Add(BuildTree(e, p.Name, true, currentDepth + 1));
                     break;
                 case SchemaKind.ValueObject when p.Value != null:
+                    if (HiddenVoTypes.Contains(p.RelatedTypeName ?? "")) break;
                     children.Add(BuildTree(p.Value, p.Name, false, currentDepth + 1));
                     break;
                 case SchemaKind.ValueObjectList when p.Value is IList vl:
+                    if (HiddenVoTypes.Contains(p.RelatedTypeName ?? "")) break;
                     foreach (var v in vl) if (v != null)
                             children.Add(BuildTree(v, p.Name, true, currentDepth + 1));
                     break;
@@ -118,10 +155,7 @@ public static class DependencyGraphBuilder
         {
             kind = NodeKind.ValueObject;
             id = $"vo-{RuntimeHelpers.GetHashCode(instance):X}";
-            var raw = instance.ToString() ?? t.Name;
-            // records produce "Type { Prop = Value, ... }"; strip the prefix for brevity
-            var braceIdx = raw.IndexOf('{');
-            label = braceIdx >= 0 ? raw[braceIdx..].Trim() : raw;
+            label = BuildVoLabel(instance, t);
         }
 
         return new GraphNode(instance, t.Name, id, label, kind);

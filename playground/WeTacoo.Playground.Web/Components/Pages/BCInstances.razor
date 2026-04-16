@@ -9,6 +9,7 @@
     <MudText Typo="Typo.h4" Class="mb-1">Schema Istanze — Relazioni + Stato</MudText>
     <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
         Albero di composizione (Entity arancio, VO giallo) con dati scalari nei blocchi. Frecce tratteggiate = riferimenti cross-AR.
+        <b>Clic su una casella</b> per espanderne i dettagli; le AR laterali si allargano al primo clic e si naviga al secondo.
     </MudText>
 
     <MudGrid Spacing="3">
@@ -106,7 +107,15 @@
     .canvas { position: relative; }
     .canvas svg.edges-layer { position: absolute; top: 0; left: 0; pointer-events: none; }
 
-    .gbox { position: absolute; border-radius: 4px; border: 2px solid; font-size: 11px; box-sizing: border-box; cursor: pointer; overflow: hidden; background: #fff; }
+    .gbox { position: absolute; border-radius: 4px; border: 2px solid; font-size: 11px; box-sizing: border-box; overflow: hidden; background: #fff; transition: box-shadow 0.15s, transform 0.1s; }
+    .gbox.clickable { cursor: pointer; }
+    .gbox.clickable:hover { box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.22); z-index: 10; }
+    .gbox.highlighted { box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.30); z-index: 12; }
+    .gbox.expanded { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+    .expand-chev { font-size: 10px; opacity: 0.6; margin-left: 4px; }
+    .gbox-actions { padding: 3px 6px; border-top: 1px dashed #eee; background: rgba(0,0,0,0.02); text-align: right; }
+    .gbox-btn { font-size: 10px; padding: 1px 8px; background: #fff; border: 1px solid #aaa; border-radius: 3px; cursor: pointer; color: #444; }
+    .gbox-btn:hover { background: #eef5ff; border-color: #3f72af; color: #1a3a6b; }
     .gbox.ar-center { background: #f8cecc; border-color: #b85450; color: #6b1f1e; }
     .gbox.ar-other { background: #fff; border-color: #b85450; color: #6b1f1e; }
     .gbox.entity { background: #fff8f0; border-color: #d79b00; color: #8a5a00; }
@@ -140,18 +149,32 @@
     private string? _selectedArType;
     private string? _selectedId;
 
+    // Caselle con dettaglio espanso (via click dell'utente)
+    private HashSet<string> _expanded = new();
+    // Casella evidenziata (hover) — ripercuotono highlight sugli edge connessi
+    private string? _hoveredKey;
+
+    private static string NodeKey(GraphNode n) => $"{n.Type}:{n.Id}";
+
+    private void ToggleExpand(GraphNode n)
+    {
+        var key = NodeKey(n);
+        if (!_expanded.Add(key)) _expanded.Remove(key);
+    }
+
     // Layout constants
     private const int NodeW = 220;
     private const int RowH = 14;
     private const int HeaderH = 22;
     private const int LabelH = 16;
     private const int RowsPadY = 4;
-    private const int MaxRows = 6;
+    private const int MaxRows = 8;
     private const int NodeGapY = 14;
     private const int ColGapX = 90;
     private const int PadX = 14;
     private const int PadY = 14;
-    private const int SideNodeH = 56; // fixed height for incoming/outgoing side nodes
+    private const int SideNodeH = 56; // fixed height for collapsed side nodes
+    private const int CollapsedTreeH = 42; // compact height for non-expanded tree nodes
 
     private record NodeBox(int X, int Y, int W, int H);
 
@@ -177,13 +200,16 @@
 
     public void Dispose() => State.OnStateChanged -= OnStateChanged;
     private void OnStateChanged() => InvokeAsync(StateHasChanged);
-    private void SelectAr(string arName) { _selectedArType = arName; _selectedId = null; }
+    private void SelectAr(string arName) { _selectedArType = arName; _selectedId = null; _expanded.Clear(); }
 
     // ── Layout ───────────────────────────────────────────────────────────
     private int ComputeNodeHeight(GraphNode node)
     {
         if (node.Kind == NodeKind.ValueObject)
             return HeaderH + LabelH + 4; // just header + label line
+        // Il centro e' sempre espanso; gli altri sono espansi solo se l'utente clicca.
+        bool isExpanded = IsCenter(node) || _expanded.Contains(NodeKey(node));
+        if (!isExpanded) return CollapsedTreeH;
         var rows = InstanceInspector.GetScalarRows(node.Instance);
         int shown = Math.Min(rows.Count, MaxRows);
         int overflow = rows.Count - shown > 0 ? 11 : 0;
@@ -192,8 +218,13 @@
 
     private int ComputeSideNodeHeight(GraphNode n)
     {
-        // side nodes are compact (no rows)
-        return HeaderH + LabelH + 4;
+        bool isExpanded = _expanded.Contains(NodeKey(n));
+        if (!isExpanded) return SideNodeH;
+        if (n.Kind == NodeKind.ValueObject) return HeaderH + LabelH + 4;
+        var rows = InstanceInspector.GetScalarRows(n.Instance);
+        int shown = Math.Min(rows.Count, MaxRows);
+        int overflow = rows.Count - shown > 0 ? 11 : 0;
+        return HeaderH + LabelH + RowsPadY * 2 + shown * RowH + overflow + 2;
     }
 
     private Layout ComputeLayout(DependencyGraph g)
@@ -206,9 +237,8 @@
         int outgoingX = treeBaseX + (maxDepth + 1) * (NodeW + ColGapX);
         int incomingX = PadX;
 
-        int sideH = SideNodeH;
-        int incomingSpace = g.Incoming.Count * sideH + Math.Max(0, g.Incoming.Count - 1) * NodeGapY;
-        int outgoingSpace = g.Outgoing.Count * sideH + Math.Max(0, g.Outgoing.Count - 1) * NodeGapY;
+        int incomingSpace = g.Incoming.Sum(e => ComputeSideNodeHeight(e.From)) + Math.Max(0, g.Incoming.Count - 1) * NodeGapY;
+        int outgoingSpace = g.Outgoing.Sum(e => ComputeSideNodeHeight(e.To)) + Math.Max(0, g.Outgoing.Count - 1) * NodeGapY;
         int totalHeight = Math.Max(treeHeight + PadY, Math.Max(incomingSpace, outgoingSpace)) + PadY * 2;
 
         var keyed = new Dictionary<(string, string), NodeBox>();
@@ -217,20 +247,24 @@
 
         var incomingNodes = new List<(GraphNode, NodeBox)>();
         var incomingEdges = new List<(GraphEdge, NodeBox, NodeBox)>();
+        int yCursor = PadY;
         for (int i = 0; i < g.Incoming.Count; i++)
         {
-            int y = DistributeY(i, g.Incoming.Count, totalHeight, sideH);
-            var box = new NodeBox(incomingX, y, NodeW, sideH);
+            int h = ComputeSideNodeHeight(g.Incoming[i].From);
+            var box = new NodeBox(incomingX, yCursor, NodeW, h);
+            yCursor += h + NodeGapY;
             incomingNodes.Add((g.Incoming[i].From, box));
             if (keyed.TryGetValue((g.Incoming[i].To.Type, g.Incoming[i].To.Id), out var toBox))
                 incomingEdges.Add((g.Incoming[i], box, toBox));
         }
         var outgoingNodes = new List<(GraphNode, NodeBox)>();
         var outgoingEdges = new List<(GraphEdge, NodeBox, NodeBox)>();
+        yCursor = PadY;
         for (int i = 0; i < g.Outgoing.Count; i++)
         {
-            int y = DistributeY(i, g.Outgoing.Count, totalHeight, sideH);
-            var box = new NodeBox(outgoingX, y, NodeW, sideH);
+            int h = ComputeSideNodeHeight(g.Outgoing[i].To);
+            var box = new NodeBox(outgoingX, yCursor, NodeW, h);
+            yCursor += h + NodeGapY;
             outgoingNodes.Add((g.Outgoing[i].To, box));
             if (keyed.TryGetValue((g.Outgoing[i].From.Type, g.Outgoing[i].From.Id), out var fromBox))
                 outgoingEdges.Add((g.Outgoing[i], fromBox, box));
@@ -333,40 +367,54 @@
                 @* HTML node boxes (overlay) *@
                 @foreach (var (n, box) in L.IncomingNodes)
                 {
-                    @RenderBox(n, box, detailed: false)
+                    @RenderBox(n, box, isTreeCenter: false)
                 }
                 @foreach (var (n, box) in L.OutgoingNodes)
                 {
-                    @RenderBox(n, box, detailed: false)
+                    @RenderBox(n, box, isTreeCenter: false)
                 }
                 @foreach (var kv in L.TreePositions)
                 {
-                    @RenderBox(kv.Key.Node, kv.Value, detailed: true)
+                    @RenderBox(kv.Key.Node, kv.Value, isTreeCenter: true)
                 }
             </div>
         </div>
     };
 
-    private RenderFragment RenderBox(GraphNode n, NodeBox b, bool detailed) => __builder =>
+    private RenderFragment RenderBox(GraphNode n, NodeBox b, bool isTreeCenter) => __builder =>
     {
+        bool isCenter = IsCenter(n);
         string cls = n.Kind switch
         {
             NodeKind.ValueObject => "vo",
             NodeKind.Entity => "entity",
-            _ => IsCenter(n) ? "ar-center" : "ar-other"
+            _ => isCenter ? "ar-center" : "ar-other"
         };
+        bool expanded = isCenter || _expanded.Contains(NodeKey(n));
+        var key = NodeKey(n);
+        bool highlighted = _hoveredKey == key;
         string style = $"left:{b.X}px;top:{b.Y}px;width:{b.W}px;height:{b.H}px;";
+        if (expanded) cls += " expanded";
+        if (highlighted) cls += " highlighted";
+        if (!isCenter) cls += " clickable";
 
-        <div class="gbox @cls" style="@style" @onclick="@(() => Navigate(n))">
+        <div class="gbox @cls" style="@style"
+             @onclick="@(() => OnBoxClick(n))"
+             @onmouseover="@(() => { _hoveredKey = key; })"
+             @onmouseout="@(() => { if (_hoveredKey == key) _hoveredKey = null; })">
             <div class="gbox-header">
                 <span>@n.Type</span>
                 @if (n.Kind != NodeKind.ValueObject)
                 {
                     <span class="id">@n.Id</span>
                 }
+                @if (!isCenter && n.Kind != NodeKind.ValueObject)
+                {
+                    <span class="expand-chev">@(expanded ? "▾" : "▸")</span>
+                }
             </div>
             <div class="gbox-label" title="@n.Label">@TruncateMiddle(n.Label, 44)</div>
-            @if (detailed && n.Kind != NodeKind.ValueObject)
+            @if (expanded && n.Kind != NodeKind.ValueObject)
             {
                 var rows = InstanceInspector.GetScalarRows(n.Instance);
                 var shown = rows.Take(MaxRows).ToList();
@@ -384,9 +432,22 @@
                         <div class="overflow">+ @extra altri campi</div>
                     }
                 </div>
+                @if (n.Kind == NodeKind.AR && !isCenter)
+                {
+                    <div class="gbox-actions">
+                        <button class="gbox-btn" @onclick:stopPropagation @onclick="@(() => Navigate(n))">↗ Naviga</button>
+                    </div>
+                }
             }
         </div>
     };
+
+    private void OnBoxClick(GraphNode n)
+    {
+        if (n.Kind == NodeKind.ValueObject) return; // VO non espandibile (header+label gia' tutto)
+        if (IsCenter(n)) return;
+        ToggleExpand(n);
+    }
 
     private bool IsCenter(GraphNode n) => _selectedArType == n.Type && _selectedId == n.Id;
 

@@ -120,6 +120,43 @@
                     }
                 </MudList>
             }
+
+            @* ══════════════ EVENTS (sotto i clienti, altezza limitata) ══════════════ *@
+            <MudDivider Class="my-3" />
+            <div class="d-flex align-center gap-1 mb-2">
+                <MudIcon Icon="@Icons.Material.Filled.Timeline" Size="Size.Small" />
+                <MudText Typo="Typo.subtitle2">Eventi</MudText>
+            </div>
+            <div style="max-height:280px; overflow-y:auto;">
+                @if (string.IsNullOrEmpty(_selectedLeadId))
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Seleziona un cliente per vedere gli eventi.</MudText>
+                }
+                else
+                {
+                    var leadEvents = GetLeadEvents();
+                    @if (!leadEvents.Any())
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Nessun evento per questo cliente.</MudText>
+                    }
+                    else
+                    {
+                        <div class="d-flex flex-column gap-1">
+                            @foreach (var evt in leadEvents)
+                            {
+                                <MudPaper Class="pa-1" Outlined="true">
+                                    <div class="d-flex align-center gap-1">
+                                        <MudChip T="string" Size="Size.Small" Color="@GetBCColor(evt.SourceBC)">@evt.SourceBC</MudChip>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@evt.OccurredAt.ToString("HH:mm:ss")</MudText>
+                                    </div>
+                                    <MudText Typo="Typo.caption"><b>@HumanDescription(evt)</b></MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Style="font-style:italic; font-size:0.7rem;">@evt.Description</MudText>
+                                </MudPaper>
+                            }
+                        </div>
+                    }
+                }
+            </div>
         </MudPaper>
     </MudItem>
 
@@ -160,47 +197,27 @@
                             <MudText Typo="Typo.body2">Email: @selectedLead.Personal.Email | Tel: @(selectedLead.Personal.Phone ?? "-")</MudText>
                             <MudText Typo="Typo.body2">Deals: @selectedLead.DealIds.Count</MudText>
 
-                            @if (!_showNewDeal)
-                            {
-                                <MudDivider Class="my-2" />
-                                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
-                                           StartIcon="@Icons.Material.Filled.Add"
-                                           OnClick="@(() => _showNewDeal = true)">@(GetLeadDeals().Any() ? "Nuovo Deal" : "Crea Deal")</MudButton>
-                            }
+                            <MudDivider Class="my-2" />
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.Add"
+                                       OnClick="CreateDealForLead">@(GetLeadDeals().Any() ? "Nuovo Deal" : "Crea Deal")</MudButton>
                         </MudCardContent>
                     </MudCard>
 
-                    @* Prossimi passi spostati nel pannello sinistro sotto la lista clienti *@
-
-                    @* ── New Deal inline form ── *@
-                    @if (_showNewDeal)
-                    {
-                        <MudCard Class="mb-3 pa-3" Outlined="true">
-                            <MudText Typo="Typo.subtitle2" Class="mb-2">Nuovo Deal</MudText>
-                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">Il tipo (Deposito/Trasloco) viene determinato in base ai servizi e al Piano aggiunti alla Quotation.</MudText>
-                            <MudSelect @bind-Value="_newDealAreaId" Label="Area" T="string" Dense="true">
-                                @foreach (var area in State.Areas)
-                                { <MudSelectItem T="string" Value="@area.Id">@area.Name</MudSelectItem> }
-                            </MudSelect>
-                            <MudSwitch @bind-Value="_isAutonomo" Label="Self-service (cliente al magazzino)" Color="Color.Info" />
-                            <div class="d-flex gap-2 mt-2">
-                                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateDealForLead">Crea</MudButton>
-                                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => _showNewDeal = false)">Annulla</MudButton>
-                            </div>
-                        </MudCard>
-                    }
-
                     @* ── 2. DEALS ── *@
+                    @if (GetLeadDeals().Any())
+                    {
+                        <MudText Typo="Typo.h6" Class="mb-2"><span class="bc-section-label commercial">Commercial</span><MudIcon Icon="@Icons.Material.Filled.Handshake" Size="Size.Small" /> Deal &amp; Quotation</MudText>
+                    }
                     <MudExpansionPanels MultiExpansion="true" Class="mb-3">
                     @foreach (var deal in GetLeadDeals())
                     {
-                        <MudExpansionPanel>
+                        <MudExpansionPanel Class="bc-commercial-pane">
                             <TitleContent>
                                 <div class="d-flex align-center gap-2" style="width:100%">
                                     <MudIcon Icon="@Icons.Material.Filled.Handshake" Size="Size.Small" />
                                     <MudText Typo="Typo.subtitle1"><b>Deal @deal.Id</b></MudText>
                                     <MudChip T="string" Size="Size.Small">@deal.Type</MudChip>
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Info">@(State.Areas.FirstOrDefault(a => a.Id == deal.AreaId)?.Name ?? "?")</MudChip>
                                     <MudChip T="string" Size="Size.Small" Color="@StatusColor(deal.Status.ToString())">@deal.Status</MudChip>
                                     <MudText Typo="Typo.caption" Color="Color.Secondary">@deal.Quotations.Count quot</MudText>
                                     @if (deal.ActivePlan != null) { <MudChip T="string" Size="Size.Small" Color="Color.Success">Piano attivo</MudChip> }
@@ -264,58 +281,69 @@
 
                                 @if (_showNewQuotation && _quotationDealId == deal.Id)
                                 {
-                                    <MudCard Class="mb-3 pa-3" Outlined="true">
+                                    <MudCard Class="mb-3 pa-3 bc-commercial-pane" Outlined="true">
                                         <MudText Typo="Typo.subtitle2" Class="mb-2">Nuova Quotation</MudText>
 
-                                        @* Services — each with its own slot/date *@
-                                        <MudText Typo="Typo.caption" Class="mb-1"><b>Servizi</b></MudText>
-                                        @{
-                                            var svcSlots = State.Slots.Where(s => (deal.AreaId == null || s.AreaId == deal.AreaId) && s.CanBook(1)).OrderBy(s => s.Date).ThenBy(s => s.TimeStart).ToList();
-                                        }
-                                        @foreach (var s in _quotationServices.ToList())
-                                        {
-                                            var svc = s;
-                                            <MudPaper Class="pa-2 mb-1" Outlined="true">
-                                                <div class="d-flex align-center gap-1">
-                                                    <MudChip T="string" Size="Size.Small" Color="Color.Info">@svc.Type</MudChip>
-                                                    <MudText Typo="Typo.caption">@(svc.ServiceAddress != null ? $"{svc.ServiceAddress.Street}, {svc.ServiceAddress.City}" : "")</MudText>
-                                                    @if (svc.ScheduledDate != null)
-                                                    { <MudChip T="string" Size="Size.Small" Color="Color.Success">@svc.ScheduledDate?.ToString("dd/MM") @svc.ScheduledSlot</MudChip> }
-                                                    <MudSpacer />
-                                                    <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => _quotationServices.Remove(svc))" />
-                                                </div>
-                                                <div class="d-flex gap-2 align-center mt-1">
-                                                    @if (svcSlots.Count > 0)
-                                                    {
-                                                        <MudSelect T="string" Value="@(svc.ScheduledDate != null ? State.Slots.FirstOrDefault(sl => sl.Date == svc.ScheduledDate && $"{sl.TimeStart}-{sl.TimeEnd}" == svc.ScheduledSlot)?.Id ?? "" : "")"
-                                                                   Label="Slot" Dense="true" Margin="Margin.Dense" Style="max-width:260px;"
-                                                                   ValueChanged="@(slotId => { var sl = State.Slots.FirstOrDefault(x => x.Id == slotId); if (sl != null) { svc.ScheduledDate = sl.Date; svc.ScheduledSlot = $"{sl.TimeStart}-{sl.TimeEnd}"; } else { svc.ScheduledDate = null; svc.ScheduledSlot = null; } StateHasChanged(); })">
-                                                            @foreach (var slot in svcSlots.Take(20))
+                                        @* ═══════ SERVIZI ═══════ *@
+                                        <MudPaper Class="quot-section svc-section mb-2" Outlined="true">
+                                            <div class="quot-section-header">
+                                                <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" />
+                                                <span class="quot-section-title">Servizi</span>
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Info">@_quotationServices.Count</MudChip>
+                                            </div>
+                                            <div class="quot-section-body">
+                                                @{
+                                                    var svcSlots = State.Slots.Where(s => s.CanBook(1)).OrderBy(s => s.Date).ThenBy(s => s.TimeStart).ToList();
+                                                }
+                                                @foreach (var s in _quotationServices.ToList())
+                                                {
+                                                    var svc = s;
+                                                    <MudPaper Outlined="true" Class="item-card svc-item mb-2">
+                                                        <div class="item-card-head">
+                                                            <MudChip T="string" Size="Size.Small" Color="Color.Info">@svc.Type</MudChip>
+                                                            @if (svc.ScheduledDate != null)
+                                                            { <MudChip T="string" Size="Size.Small" Color="Color.Success">@svc.ScheduledDate?.ToString("dd/MM") @svc.ScheduledSlot</MudChip> }
+                                                            @if (svc.IsAutonomous) { <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.Store">Autonomo</MudChip> }
+                                                            <span class="ms-auto"></span>
+                                                            <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => _quotationServices.Remove(svc))" />
+                                                        </div>
+                                                        <div class="d-flex gap-2 align-center mt-1 flex-wrap">
+                                                            @if (svcSlots.Count > 0)
                                                             {
-                                                                <MudSelectItem T="string" Value="@slot.Id">@slot.Date.ToString("dd/MM ddd") @slot.TimeStart-@slot.TimeEnd (@($"{slot.MaxVolume - slot.UsedVolume:F0}")m³)</MudSelectItem>
+                                                                <MudSelect T="string" Value="@(svc.ScheduledDate != null ? State.Slots.FirstOrDefault(sl => sl.Date == svc.ScheduledDate && $"{sl.TimeStart}-{sl.TimeEnd}" == svc.ScheduledSlot)?.Id ?? "" : "")"
+                                                                           Label="Slot" Dense="true" Margin="Margin.Dense" Style="max-width:260px;"
+                                                                           ValueChanged="@(slotId => { var sl = State.Slots.FirstOrDefault(x => x.Id == slotId); if (sl != null) { svc.ScheduledDate = sl.Date; svc.ScheduledSlot = $"{sl.TimeStart}-{sl.TimeEnd}"; } else { svc.ScheduledDate = null; svc.ScheduledSlot = null; } StateHasChanged(); })">
+                                                                    @foreach (var slot in svcSlots.Take(20))
+                                                                    {
+                                                                        <MudSelectItem T="string" Value="@slot.Id">@slot.Date.ToString("dd/MM ddd") @slot.TimeStart-@slot.TimeEnd (@($"{slot.MaxVolume - slot.UsedVolume:F0}")m³)</MudSelectItem>
+                                                                    }
+                                                                </MudSelect>
                                                             }
-                                                        </MudSelect>
-                                                    }
-                                                    <MudSelect T="string" Value="@(svc.ServiceAddress?.AreaId ?? deal.AreaId ?? "")" Label="Area" Dense="true" Margin="Margin.Dense" Style="max-width:120px;"
-                                                               ValueChanged="@(areaId => { if (svc.ServiceAddress != null) svc.ServiceAddress = svc.ServiceAddress with { AreaId = areaId }; StateHasChanged(); })">
-                                                        @foreach (var area in State.Areas)
-                                                        { <MudSelectItem T="string" Value="@area.Id">@area.Name</MudSelectItem> }
+                                                            <MudSelect T="string" Value="@(svc.ServiceAddress?.AreaId ?? "")" Label="Area" Dense="true" Margin="Margin.Dense" Style="max-width:120px;"
+                                                                       ValueChanged="@(areaId => { if (svc.ServiceAddress != null) svc.ServiceAddress = svc.ServiceAddress with { AreaId = areaId }; StateHasChanged(); })">
+                                                                @foreach (var area in State.Areas)
+                                                                { <MudSelectItem T="string" Value="@area.Id">@area.Name</MudSelectItem> }
+                                                            </MudSelect>
+                                                            <MudSwitch T="bool" Value="@svc.IsAutonomous"
+                                                                       ValueChanged="@((bool v) => { svc.IsAutonomous = v; StateHasChanged(); })"
+                                                                       Color="Color.Info" Size="Size.Small">
+                                                                <MudText Typo="Typo.caption">Self-service</MudText>
+                                                            </MudSwitch>
+                                                        </div>
+                                                    </MudPaper>
+                                                }
+                                                <div class="d-flex gap-2 align-center flex-wrap">
+                                                    <MudSelect T="WeTacoo.Domain.Commercial.Enums.ServiceBookedType?" Label="+ Aggiungi servizio" Dense="true" Style="max-width:170px" Margin="Margin.Dense"
+                                                               Value="_newQuotSvcType"
+                                                               ValueChanged="@((WeTacoo.Domain.Commercial.Enums.ServiceBookedType? t) => { if (t != null) { _newQuotSvcType = t; AddServiceToNewQuotation(); _newQuotSvcType = null; StateHasChanged(); } })">
+                                                        @foreach (var t in Enum.GetValues<WeTacoo.Domain.Commercial.Enums.ServiceBookedType>())
+                                                        { <MudSelectItem T="WeTacoo.Domain.Commercial.Enums.ServiceBookedType?" Value="@t">@t</MudSelectItem> }
                                                     </MudSelect>
+                                                    <MudButton Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined"
+                                                               OnClick="AddTraslocoToNewQuotation">+ Trasloco (Ritiro+Consegna)</MudButton>
                                                 </div>
-                                            </MudPaper>
-                                        }
-                                        <div class="d-flex gap-2 align-center flex-wrap mb-2">
-                                            <MudSelect T="WeTacoo.Domain.Commercial.Enums.ServiceBookedType?" Label="Aggiungi servizio" Dense="true" Style="max-width:150px" Margin="Margin.Dense"
-                                                       Value="_newQuotSvcType"
-                                                       ValueChanged="@((WeTacoo.Domain.Commercial.Enums.ServiceBookedType? t) => { if (t != null) { _newQuotSvcType = t; AddServiceToNewQuotation(); _newQuotSvcType = null; StateHasChanged(); } })">
-                                                @foreach (var t in Enum.GetValues<WeTacoo.Domain.Commercial.Enums.ServiceBookedType>())
-                                                { <MudSelectItem T="WeTacoo.Domain.Commercial.Enums.ServiceBookedType?" Value="@t">@t</MudSelectItem> }
-                                            </MudSelect>
-                                            <MudButton Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined"
-                                                       OnClick="AddTraslocoToNewQuotation">+ Trasloco (Ritiro+Consegna)</MudButton>
-                                            <MudTextField @bind-Value="_newQuotSvcStreet" Label="Via" Dense="true" Style="max-width:140px" Margin="Margin.Dense" />
-                                            <MudTextField @bind-Value="_newQuotSvcCity" Label="Citta" Dense="true" Style="max-width:100px" Margin="Margin.Dense" />
-                                        </div>
+                                            </div>
+                                        </MudPaper>
 
                                         @* Object selector — for delivery/disposal from active warehouse *@
                                         @{
@@ -350,35 +378,66 @@
                                             <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">Nessun oggetto in magazzino per questo Deal. Il servizio verra' creato senza selezione esplicita.</MudAlert>
                                         }
 
-                                        @* Products *@
-                                        <MudText Typo="Typo.caption" Class="mb-1"><b>Prodotti</b></MudText>
-                                        <MudSelect T="string" Label="Aggiungi prodotto" Dense="true" Style="max-width:280px" Margin="Margin.Dense" Class="mb-2"
-                                                   ValueChanged="@(id => { _selectedProductTemplateId = id; AddProductToNewQuotation(); })">
-                                            @foreach (var pt in State.ProductTemplates)
-                                            { <MudSelectItem T="string" Value="@pt.Id">@pt.Name (@pt.BasePrice.ToString("C"))</MudSelectItem> }
-                                        </MudSelect>
-                                        @if (_quotationProducts.Count > 0)
-                                        {
-                                            <MudChipSet T="string" Class="mb-2" ReadOnly="false">
-                                                @foreach (var p in _quotationProducts)
-                                                { <MudChip T="string" Color="Color.Primary" OnClose="@(() => _quotationProducts.Remove(p))">@p.Name — @p.Price.ToString("C")</MudChip> }
-                                            </MudChipSet>
-                                        }
+                                        @* ═══════ PRODOTTI ═══════ *@
+                                        <MudPaper Class="quot-section prod-section mb-2" Outlined="true">
+                                            <div class="quot-section-header">
+                                                <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Size="Size.Small" />
+                                                <span class="quot-section-title">Prodotti</span>
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Primary">@_quotationProducts.Count</MudChip>
+                                            </div>
+                                            <div class="quot-section-body">
+                                                @if (_quotationProducts.Count > 0)
+                                                {
+                                                    @foreach (var p in _quotationProducts.ToList())
+                                                    {
+                                                        var prod = p;
+                                                        <MudPaper Outlined="true" Class="item-card prod-item mb-2">
+                                                            <div class="item-card-head">
+                                                                <span class="item-card-title">@prod.Name</span>
+                                                                <span class="ms-auto"><b>@prod.Price.ToString("C")</b></span>
+                                                                <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => _quotationProducts.Remove(prod))" />
+                                                            </div>
+                                                        </MudPaper>
+                                                    }
+                                                }
+                                                <div class="d-flex gap-2 align-center flex-wrap">
+                                                    <MudSelect T="string" Label="+ Da catalogo" Dense="true" Style="max-width:280px" Margin="Margin.Dense"
+                                                               ValueChanged="@(id => { _selectedProductTemplateId = id; AddProductToNewQuotation(); })">
+                                                        @foreach (var pt in State.ProductTemplates)
+                                                        { <MudSelectItem T="string" Value="@pt.Id">@pt.Name (@pt.BasePrice.ToString("C"))</MudSelectItem> }
+                                                    </MudSelect>
+                                                </div>
+                                                <div class="d-flex gap-2 align-center flex-wrap mt-2">
+                                                    <MudTextField @bind-Value="_customProductName" Label="Custom" Dense="true" Style="max-width:160px" Margin="Margin.Dense" Placeholder="es. Supplemento" />
+                                                    <MudNumericField @bind-Value="_customProductPrice" Label="Prezzo" Format="N2" Style="max-width:100px" Margin="Margin.Dense" HideSpinButtons="true" />
+                                                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary"
+                                                               Disabled="@(string.IsNullOrWhiteSpace(_customProductName) || _customProductPrice <= 0)"
+                                                               OnClick="AddCustomProductToNewQuotation">+ Aggiungi custom</MudButton>
+                                                </div>
+                                            </div>
+                                        </MudPaper>
 
-                                        @* DraftPlan — proponibile solo se il Deal non ha gia' un ActivePlan *@
+                                        @* ═══════ PIANO DEPOSITO ═══════ *@
                                         @if (deal.ActivePlan == null)
                                         {
-                                            <MudCheckBox T="bool" @bind-Value="_includePlan" Dense="true" Size="Size.Small">
-                                                Include piano deposito mensile (Deal diventa Recurring)
-                                            </MudCheckBox>
-                                            @if (_includePlan)
-                                            {
-                                                <div class="d-flex gap-2 align-center mb-2 flex-wrap mt-1">
-                                                    <MudTextField @bind-Value="_newQuotPlanDesc" Label="Descrizione" Dense="true" Style="max-width:160px" Margin="Margin.Dense" Placeholder="es. Box 10m3" />
-                                                    <MudNumericField @bind-Value="_newQuotPlanFee" Label="EUR/mese" Format="N2" Style="max-width:100px" Margin="Margin.Dense" HideSpinButtons="true" />
-                                                    <MudNumericField @bind-Value="_newQuotPlanM3" Label="m3" Format="N1" Style="max-width:80px" Margin="Margin.Dense" HideSpinButtons="true" />
+                                            <MudPaper Class="quot-section plan-section mb-2" Outlined="true">
+                                                <div class="quot-section-header">
+                                                    <MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Size="Size.Small" />
+                                                    <span class="quot-section-title">Piano Deposito</span>
+                                                    <span class="quot-section-hint">Se accettata con piano, il Deal diventa Recurring.</span>
                                                 </div>
-                                            }
+                                                <div class="quot-section-body">
+                                                    <MudCheckBox T="bool" @bind-Value="_includePlan" Dense="true" Size="Size.Small">Includi piano deposito mensile</MudCheckBox>
+                                                    @if (_includePlan)
+                                                    {
+                                                        <div class="d-flex gap-2 align-center mb-2 flex-wrap mt-1">
+                                                            <MudTextField @bind-Value="_newQuotPlanDesc" Label="Descrizione" Dense="true" Style="max-width:160px" Margin="Margin.Dense" Placeholder="es. Box 10m3" />
+                                                            <MudNumericField @bind-Value="_newQuotPlanFee" Label="EUR/mese" Format="N2" Style="max-width:100px" Margin="Margin.Dense" HideSpinButtons="true" />
+                                                            <MudNumericField @bind-Value="_newQuotPlanM3" Label="m3" Format="N1" Style="max-width:80px" Margin="Margin.Dense" HideSpinButtons="true" />
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </MudPaper>
                                         }
                                         else
                                         {
@@ -402,7 +461,7 @@
                                 <MudExpansionPanels MultiExpansion="true" Class="mb-2">
                                 @foreach (var q in deal.Quotations)
                                 {
-                                    <MudExpansionPanel Style="@(q.IsAccepted ? "border-left: 4px solid var(--mud-palette-success);" : "")">
+                                    <MudExpansionPanel Class="bc-commercial-pane" Style="@(q.IsAccepted ? "border-left-color: var(--mud-palette-success) !important;" : "")">
                                         <TitleContent>
                                             <div class="d-flex justify-space-between align-center" style="width:100%">
                                                 <div class="d-flex align-center gap-1">
@@ -432,12 +491,8 @@
                                                     <MudPaper Outlined="true" Class="item-card svc-item mb-2">
                                                         <div class="item-card-head">
                                                             <MudChip T="string" Size="Size.Small" Color="Color.Info">@svc.Type</MudChip>
-                                                            <span class="item-card-title">@(svc.ServiceAddress != null ? $"{svc.ServiceAddress.Street}, {svc.ServiceAddress.City}" : "—")</span>
+                                                            <span class="item-card-title">@(svc.ServiceAddress?.ZipCode ?? "—")</span>
                                                             <span class="ms-auto"><EntityActions Kind="ServiceBooked" Ids="@(new[] { deal.Id, q.Id, svc.Id })" Entity="svc" OnChanged="StateHasChanged" /></span>
-                                                            @if (!q.IsAccepted)
-                                                            {
-                                                                <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => { q.Services.Remove(svc); State.NotifyStateChanged(); })" />
-                                                            }
                                                         </div>
                                                         <div class="item-card-chips">
                                                             @{ var svcAreaName = State.Areas.FirstOrDefault(a => a.Id == (svc.ServiceAddress?.AreaId ?? deal.AreaId))?.Name; }
@@ -447,7 +502,18 @@
                                                                 <MudChip T="string" Size="Size.Small" Color="Color.Success">@svc.ScheduledDate?.ToString("dd/MM") @svc.ScheduledSlot</MudChip>
                                                             }
                                                             <MudChip T="string" Size="Size.Small" Color="@SvcBookedStatusColor(svc.Status)">SB: @svc.Status</MudChip>
+                                                            @if (svc.IsAutonomous) { <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.Store">Autonomo</MudChip> }
                                                         </div>
+                                                        @if (!q.IsAccepted)
+                                                        {
+                                                            <div class="item-card-actions">
+                                                                <MudSwitch T="bool" Value="@svc.IsAutonomous"
+                                                                           ValueChanged="@((bool v) => { svc.IsAutonomous = v; State.NotifyStateChanged(); })"
+                                                                           Color="Color.Info" Size="Size.Small">
+                                                                    <MudText Typo="Typo.caption">Self-service (cliente al magazzino)</MudText>
+                                                                </MudSwitch>
+                                                            </div>
+                                                        }
                                                         <div class="item-card-actions">
                                                             @if (svc.InspectionId != null)
                                                             {
@@ -488,10 +554,7 @@
                                                                     <MudButton Size="Size.Small" Color="Color.Info" Variant="Variant.Filled"
                                                                                OnClick="@(() => { if (svcWo != null) VerifyQuestionnaireAndReady(svcQuest, svc, svcWo); })">Questionario completato</MudButton>
                                                                 }
-                                                                else if (svcQuest != null && svcQuest.IsVerified)
-                                                                {
-                                                                    <MudChip T="string" Size="Size.Small" Color="Color.Success">Programmabile</MudChip>
-                                                                }
+                                                                @* chip "Programmabile" rimosso: lo stato programmabile vive sul WorkOrder (review 2026-04-16) *@
                                                             }
                                                         </div>
                                                     </MudPaper>
@@ -499,7 +562,7 @@
                                                 @if (!q.IsAccepted)
                                                 {
                                                     <MudSelect T="WeTacoo.Domain.Commercial.Enums.ServiceBookedType" Label="+ Aggiungi servizio" Dense="true" Style="max-width:180px" Margin="Margin.Dense"
-                                                               ValueChanged="@(t => { q.Services.Add(new WeTacoo.Domain.Commercial.Entities.ServiceBooked { Type = t, ServiceAddress = new WeTacoo.Domain.Commercial.ValueObjects.Address(_inlineSvcStreet, _inlineSvcCity, "", deal.AreaId) }); _inlineSvcStreet = _inlineSvcCity = ""; State.NotifyStateChanged(); })">
+                                                               ValueChanged="@(t => { q.Services.Add(new WeTacoo.Domain.Commercial.Entities.ServiceBooked { Type = t, ServiceAddress = new WeTacoo.Domain.Commercial.ValueObjects.Address(_inlineSvcZip) }); _inlineSvcZip = ""; State.NotifyStateChanged(); })">
                                                         @foreach (var t in Enum.GetValues<WeTacoo.Domain.Commercial.Enums.ServiceBookedType>())
                                                         { <MudSelectItem T="WeTacoo.Domain.Commercial.Enums.ServiceBookedType" Value="@t">@t</MudSelectItem> }
                                                     </MudSelect>
@@ -536,10 +599,7 @@
                                                                     <b>@prod.Price.ToString("C")</b>
                                                                 }
                                                             </span>
-                                                            @if (!q.IsAccepted)
-                                                            {
-                                                                <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => { q.Products.Remove(prod); State.NotifyStateChanged(); })" />
-                                                            }
+                                                            <EntityActions Kind="Product" Ids="@(new[] { deal.Id, q.Id, prod.Id })" Entity="prod" OnChanged="StateHasChanged" />
                                                         </div>
                                                     </MudPaper>
                                                 }
@@ -575,7 +635,7 @@
                                                                     <MudTextField @bind-Value="plan.Description" Label="Descrizione" Dense="true" Style="max-width:220px" Margin="Margin.Dense" />
                                                                     <MudNumericField @bind-Value="plan.MonthlyFee" Label="EUR/mese" Format="N2" Dense="true" Style="max-width:110px" Margin="Margin.Dense" HideSpinButtons="true" />
                                                                     <MudNumericField @bind-Value="plan.EstimatedM3" Label="m³" Format="N1" Dense="true" Style="max-width:90px" Margin="Margin.Dense" HideSpinButtons="true" />
-                                                                    <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => { q.DraftPlans.Remove(plan); State.NotifyStateChanged(); })" />
+                                                                    <EntityActions Kind="DraftPlan" Ids="@(new[] { deal.Id, q.Id, plan.Id })" Entity="plan" OnChanged="StateHasChanged" />
                                                                 </div>
                                                             }
                                                             else
@@ -584,6 +644,7 @@
                                                                     <span class="item-card-title">@plan.Description</span>
                                                                     <span class="ms-auto"><b>@plan.MonthlyFee.ToString("C")</b> / mese</span>
                                                                     <span>@plan.EstimatedM3.ToString("F1") m³</span>
+                                                                    <EntityActions Kind="DraftPlan" Ids="@(new[] { deal.Id, q.Id, plan.Id })" Entity="plan" OnChanged="StateHasChanged" />
                                                                 </div>
                                                             }
                                                         </MudPaper>
@@ -722,10 +783,10 @@
                     @if (GetLeadWorkOrders().Any())
                     {
                         <MudDivider Class="my-2" />
-                        <MudText Typo="Typo.h6" Class="mb-2"><MudIcon Icon="@Icons.Material.Filled.Engineering" Size="Size.Small" /> Operational</MudText>
+                        <MudText Typo="Typo.h6" Class="mb-2"><span class="bc-section-label op">Operational</span><MudIcon Icon="@Icons.Material.Filled.Engineering" Size="Size.Small" /> WorkOrder</MudText>
                         @foreach (var wo in GetLeadWorkOrders())
                         {
-                            <MudCard Class="mb-2" Elevation="1">
+                            <MudCard Class="mb-2 bc-op-pane" Elevation="1">
                                 <MudCardContent>
                                     @{
                                         var woDeal = State.Deals.FirstOrDefault(d => d.LeadId == _selectedLeadId
@@ -735,9 +796,12 @@
                                     <div class="d-flex align-center gap-2 mb-1">
                                         <MudText Typo="Typo.body2"><b>WO @wo.Id.Substring(0, Math.Min(8, wo.Id.Length))...</b></MudText>
                                         <MudChip T="string" Size="Size.Small">@wo.ServiceType.Type</MudChip>
+                                        @if (wo.ServiceType.IsAutonomous) { <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.Store">Autonomo</MudChip> }
                                         @if (wo.ServiceType.AreaId != null)
                                         { <MudChip T="string" Size="Size.Small" Color="Color.Default">@(State.Areas.FirstOrDefault(a => a.Id == wo.ServiceType.AreaId)?.Name ?? wo.ServiceType.AreaId)</MudChip> }
                                         <MudChip T="string" Size="Size.Small" Color="@WOStatusColor(woStatus)">@woStatus</MudChip>
+                                        <MudSpacer />
+                                        <EntityActions Kind="WorkOrder" Ids="@(new[] { wo.Id })" Entity="wo" OnChanged="StateHasChanged" />
                                     </div>
                                     <MudText Typo="Typo.caption">
                                         @(wo.ServiceAddress ?? "-")
@@ -826,169 +890,139 @@
                     @if (GetLeadWorkOrders().Any() || HasAnyOpsWoToPlan())
                     {
                         <MudDivider Class="my-2" />
-                        <MudText Typo="Typo.h6" Class="mb-2"><MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Size="Size.Small" /> Planning</MudText>
+                        <MudText Typo="Typo.h6" Class="mb-2"><span class="bc-section-label op">Operational</span><MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Size="Size.Small" /> Planning &amp; Mission</MudText>
 
-                        @* Crea Planning per un giorno *@
-                        <MudPaper Class="pa-3 mb-2" Outlined="true">
+                        @* Crea Planning per un giorno — solo data.
+                           Il Planning raggruppa le Mission di una giornata. Veicoli, team e fascia oraria
+                           vivono sulla singola Mission (vedi sotto). *@
+                        <MudPaper Class="pa-3 mb-2 bc-op-pane" Outlined="true">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+                                <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" />
+                                Il Planning e' il contenitore di Mission per un giorno. Qui si sceglie solo la data;
+                                veicoli, team e fascia oraria si definiscono quando si crea la singola Mission.
+                            </MudText>
                             <div class="d-flex gap-2 align-center flex-wrap">
                                 @{
                                     var planningDates = GetPlanningAvailableDates();
                                 }
-                                <MudSelect Value="_missionDateStr" Label="Giorno Planning" T="string" Dense="true" Style="max-width:200px" Margin="Margin.Dense"
+                                <MudSelect Value="_missionDateStr" Label="Giorno Planning" T="string" Dense="true" Style="max-width:220px" Margin="Margin.Dense"
                                            ValueChanged="@((string v) => { _missionDateStr = v; _missionDate = DateTime.TryParse(v, out var d) ? d : null; StateHasChanged(); })">
                                     @foreach (var pd in planningDates)
                                     {
                                         <MudSelectItem T="string" Value="@pd.ToString("yyyy-MM-dd")">@pd.ToString("dd/MM ddd") @(GetScheduledUnassignedWOs().Any(w => GetWOsForDate(GetScheduledUnassignedWOs(), pd).Contains(w)) ? "★" : "")</MudSelectItem>
                                     }
                                 </MudSelect>
-                                <MudTextField @bind-Value="_missionTimeSlot" Label="Fascia oraria" Style="max-width:140px" Margin="Margin.Dense" />
-                                <MudNumericField @bind-Value="_missionVolumePercent" Label="Vol %" Format="N0"
-                                               Style="max-width:70px" Margin="Margin.Dense" HideSpinButtons="true" Min="1" Max="100" />
-                            </div>
-
-                            @* Multi-veicolo *@
-                            <MudText Typo="Typo.caption" Class="mt-2"><b>Veicoli (uno o piu'):</b></MudText>
-                            <div class="d-flex gap-2 flex-wrap">
-                                @foreach (var v in State.Vehicles.Where(v => v.Status == "Available"))
+                                @if (_missionDate != null)
                                 {
-                                    var vId = v.Id;
-                                    <MudCheckBox T="bool" Dense="true" Size="Size.Small"
-                                                 Label="@($"{v.Name} ({v.Plate})")"
-                                                 Value="@_selectedVehicleIds.Contains(vId)"
-                                                 ValueChanged="@((bool ck) => { if (ck) _selectedVehicleIds.Add(vId); else _selectedVehicleIds.Remove(vId); StateHasChanged(); })" />
+                                    var existingPlanning = State.Plannings.FirstOrDefault(p => p.Date.Date == _missionDate?.Date);
+                                    @if (existingPlanning == null)
+                                    {
+                                        <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
+                                                   StartIcon="@Icons.Material.Filled.CalendarToday"
+                                                   OnClick="@(() => CreateWorkspacePlanning())">Crea Planning</MudButton>
+                                    }
+                                    else
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Success">Planning @existingPlanning.Date.ToString("dd/MM") — @existingPlanning.Missions.Count Mission</MudChip>
+                                    }
                                 }
                             </div>
-
-                            @* Team selector (contestuale al Planning selezionato) *@
-                            @if (_missionDate != null)
-                            {
-                                var planningForTeams = State.Plannings.FirstOrDefault(p => p.Date.Date == _missionDate?.Date);
-                                <div class="d-flex gap-2 align-center flex-wrap mt-2">
-                                    <MudSelect @bind-Value="_selectedTeamId" T="string" Label="Team" Dense="true" Style="max-width:250px" Margin="Margin.Dense" Disabled="@(planningForTeams == null)">
-                                        <MudSelectItem T="string" Value="@((string?)null)">— auto (primo team / crea default) —</MudSelectItem>
-                                        @if (planningForTeams != null)
-                                        {
-                                            @foreach (var t in planningForTeams.Teams)
-                                            {
-                                                <MudSelectItem T="string" Value="@t.Id">Team @t.Id.Substring(0, Math.Min(6, t.Id.Length)) — @string.Join(", ", t.OperatorIds.Select(oid => State.Operators.FirstOrDefault(o => o.Id == oid)?.FullName ?? oid))</MudSelectItem>
-                                            }
-                                        }
-                                    </MudSelect>
-                                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info"
-                                               Disabled="@(planningForTeams == null)"
-                                               OnClick="@(() => { _showNewTeamForm = !_showNewTeamForm; })">+ Nuovo team</MudButton>
-                                </div>
-                                @if (_showNewTeamForm && planningForTeams != null)
-                                {
-                                    <MudPaper Class="pa-2 mt-2" Outlined="true">
-                                        <MudText Typo="Typo.caption" Class="mb-1"><b>Componenti nuovo team:</b></MudText>
-                                        <div class="d-flex gap-2 flex-wrap">
-                                            @foreach (var op in State.Operators)
-                                            {
-                                                var opId = op.Id;
-                                                <MudCheckBox T="bool" Dense="true" Size="Size.Small" Label="@op.FullName"
-                                                             Value="@_newTeamOperatorIds.Contains(opId)"
-                                                             ValueChanged="@((bool ck) => { if (ck) _newTeamOperatorIds.Add(opId); else _newTeamOperatorIds.Remove(opId); StateHasChanged(); })" />
-                                            }
-                                        </div>
-                                        <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled" Class="mt-2"
-                                                   Disabled="@(_newTeamOperatorIds.Count == 0)"
-                                                   OnClick="@(() => CreateTeamForPlanning(planningForTeams))">Crea team</MudButton>
-                                    </MudPaper>
-                                }
-                            }
-
                             @if (_missionDate == null)
                             {
                                 <MudText Typo="Typo.caption" Class="mt-2" Color="Color.Secondary">Scegli un giorno per vedere i servizi da pianificare.</MudText>
                             }
-                            else
-                            {
-                                var existingPlanning = State.Plannings.FirstOrDefault(p => p.Date.Date == _missionDate?.Date);
-                                @if (existingPlanning == null)
-                                {
-                                    <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled" Class="mt-2"
-                                               StartIcon="@Icons.Material.Filled.CalendarToday"
-                                               OnClick="@(() => CreateWorkspacePlanning())">Crea Planning per @_missionDate?.ToString("dd/MM/yyyy")</MudButton>
-                                }
-                                else
-                                {
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="mt-2">Planning @existingPlanning.Date.ToString("dd/MM") creato — @existingPlanning.Missions.Count Mission</MudChip>
-                                }
-                            }
                         </MudPaper>
 
-                        @* ════════ Mission esistenti per questo cliente ════════ *@
+                        @* ════════ Mission esistenti per questo cliente — riquadro ben visibile ════════ *@
                         var leadWos = GetLeadWorkOrders().Select(w => w.Id).ToHashSet();
                         var leadPlannings = State.Plannings
                             .Where(p => p.Missions.Any(m => m.ServiceRefs.Any(sr => leadWos.Contains(sr.ServiceId))))
                             .OrderBy(p => p.Date).ToList();
                         @if (leadPlannings.Count > 0)
                         {
-                            <MudText Typo="Typo.subtitle2" Class="mb-1">Mission esistenti</MudText>
-                            @foreach (var planning in leadPlannings)
-                            {
-                                <MudCard Class="mb-2" Outlined="true">
-                                    <MudCardContent>
-                                        <MudText Typo="Typo.body2"><b>Planning @planning.Date.ToString("dd/MM/yyyy")</b> — @planning.Missions.Count Mission | @planning.Teams.Count team</MudText>
-                                        @foreach (var mission in planning.Missions.Where(m => m.ServiceRefs.Any(sr => leadWos.Contains(sr.ServiceId))))
-                                        {
-                                            var hasShift = State.Shifts.Any(s => s.MissionId == mission.Id);
-                                            var missionTeam = planning.Teams.FirstOrDefault(t => t.Id == mission.TeamId);
-                                            <MudPaper Class="pa-2 mt-1" Outlined="true">
-                                                <div class="d-flex align-center gap-2 flex-wrap">
-                                                    <MudChip T="string" Size="Size.Small" Color="@(mission.IsCancelled ? Color.Error : hasShift ? Color.Success : Color.Warning)">
-                                                        @(mission.IsCancelled ? "Cancelled" : hasShift ? "Confermata (Shift creato)" : "Non confermata")
-                                                    </MudChip>
-                                                    <MudText Typo="Typo.caption"><b>Mission</b> @mission.Id.Substring(0, Math.Min(8, mission.Id.Length)) | @mission.TimeSlot</MudText>
-                                                    @if (missionTeam != null)
-                                                    {
-                                                        <MudText Typo="Typo.caption">Team: @string.Join(", ", missionTeam.OperatorIds.Select(oid => State.Operators.FirstOrDefault(o => o.Id == oid)?.FullName ?? oid))</MudText>
-                                                    }
-                                                </div>
-                                                <div class="mt-1">
-                                                    <MudText Typo="Typo.caption"><b>Servizi (@mission.ServiceRefs.Count)</b>:
-                                                    @foreach (var sr in mission.ServiceRefs)
-                                                    {
-                                                        var srWo = State.WorkOrders.FirstOrDefault(w => w.Id == sr.ServiceId);
-                                                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="ml-1">@(srWo?.ServiceType.Type.ToString() ?? "?") (@sr.VolumePercentage%)</MudChip>
-                                                    }
-                                                    </MudText>
-                                                </div>
-                                                @if (!mission.IsCancelled && !hasShift)
-                                                {
-                                                    <div class="d-flex gap-2 mt-2">
-                                                        <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
-                                                                   OnClick="@(() => ConfirmMissionShift(planning, mission))">Conferma → Shift</MudButton>
-                                                        <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
-                                                                   OnClick="@(() => DeleteMission(planning, mission))">Elimina Mission</MudButton>
+                            <MudPaper Class="existing-missions-box pa-3 mb-3" Elevation="2">
+                                <div class="d-flex align-center gap-2 mb-2">
+                                    <MudIcon Icon="@Icons.Material.Filled.EventNote" Size="Size.Small" />
+                                    <MudText Typo="Typo.subtitle1"><b>Mission esistenti per questo cliente</b></MudText>
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Primary">@leadPlannings.SelectMany(p => p.Missions).Count() totali</MudChip>
+                                </div>
+                                @foreach (var planning in leadPlannings)
+                                {
+                                    <MudCard Class="mb-2 bc-op-pane" Outlined="true">
+                                        <MudCardContent>
+                                            <div class="d-flex align-center gap-2">
+                                                <MudText Typo="Typo.body2"><b>Planning @planning.Date.ToString("dd/MM/yyyy")</b> — @planning.Missions.Count Mission | @planning.Teams.Count team</MudText>
+                                                <MudSpacer />
+                                                <EntityActions Kind="Planning" Ids="@(new[] { planning.Id })" Entity="planning" OnChanged="StateHasChanged" />
+                                            </div>
+                                            @foreach (var mission in planning.Missions.Where(m => m.ServiceRefs.Any(sr => leadWos.Contains(sr.ServiceId))))
+                                            {
+                                                var hasShift = State.Shifts.Any(s => s.MissionId == mission.Id);
+                                                var missionTeam = planning.Teams.FirstOrDefault(t => t.Id == mission.TeamId);
+                                                <MudPaper Class="pa-2 mt-1" Outlined="true">
+                                                    <div class="d-flex align-center gap-2 flex-wrap">
+                                                        <MudChip T="string" Size="Size.Small" Color="@(mission.IsCancelled ? Color.Error : hasShift ? Color.Success : Color.Warning)">
+                                                            @(mission.IsCancelled ? "Cancelled" : hasShift ? "Confermata (Shift creato)" : "Non confermata")
+                                                        </MudChip>
+                                                        <MudText Typo="Typo.caption"><b>Mission</b> @mission.Id.Substring(0, Math.Min(8, mission.Id.Length)) | @mission.TimeSlot</MudText>
+                                                        @if (missionTeam != null)
+                                                        {
+                                                            <MudText Typo="Typo.caption">Team: @string.Join(", ", missionTeam.OperatorIds.Select(oid => State.Operators.FirstOrDefault(o => o.Id == oid)?.FullName ?? oid))</MudText>
+                                                        }
+                                                        <MudSpacer />
+                                                        <EntityActions Kind="Mission" Ids="@(new[] { planning.Id, mission.Id })" Entity="mission" OnChanged="StateHasChanged" />
                                                     </div>
-                                                }
-                                            </MudPaper>
-                                        }
-                                    </MudCardContent>
-                                </MudCard>
-                            }
+                                                    <div class="mt-1">
+                                                        <MudText Typo="Typo.caption"><b>Servizi (@mission.ServiceRefs.Count)</b>:
+                                                        @foreach (var sr in mission.ServiceRefs)
+                                                        {
+                                                            var srWo = State.WorkOrders.FirstOrDefault(w => w.Id == sr.ServiceId);
+                                                            <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="ml-1">@(srWo?.ServiceType.Type.ToString() ?? "?") (@sr.VolumePercentage%)</MudChip>
+                                                        }
+                                                        </MudText>
+                                                    </div>
+                                                    @if (!mission.IsCancelled && !hasShift)
+                                                    {
+                                                        <div class="d-flex gap-2 mt-2">
+                                                            <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
+                                                                       OnClick="@(() => ConfirmMissionShift(planning, mission))">Conferma → Shift</MudButton>
+                                                            <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
+                                                                       OnClick="@(() => DeleteMission(planning, mission))">Elimina Mission</MudButton>
+                                                        </div>
+                                                    }
+                                                </MudPaper>
+                                            }
+                                        </MudCardContent>
+                                    </MudCard>
+                                }
+                            </MudPaper>
                         }
 
-                        @* ════════ Crea nuova Mission (con selezione multi-WO) ════════ *@
+                        @* ════════ Crea nuova Mission ════════ *@
                         @if (_missionDate != null && State.Plannings.Any(p => p.Date.Date == _missionDate?.Date))
                         {
-                            <MudCard Class="mb-2" Outlined="true">
+                            var currentPlanning = State.Plannings.First(p => p.Date.Date == _missionDate?.Date);
+                            <MudCard Class="mb-2 bc-op-pane" Outlined="true">
                                 <MudCardContent>
-                                    <MudText Typo="Typo.subtitle2" Class="mb-2">➕ Nuova Mission per @_missionDate?.ToString("dd/MM/yyyy")</MudText>
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">Seleziona i servizi da includere nella stessa Mission (puoi combinarne piu' di uno). La Mission nasce "non confermata" e puo' essere eliminata prima della conferma.</MudText>
+                                    <MudText Typo="Typo.subtitle1" Class="mb-1">➕ Nuova Mission per @_missionDate?.ToString("dd/MM/yyyy")</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3">
+                                        <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" />
+                                        Una Mission e' un'uscita di un team in una giornata: raggruppa i servizi che il team eseguira' insieme.
+                                        Alla conferma, genera uno Shift in Execution con ServiceEntry per ciascun servizio.
+                                    </MudText>
 
+                                    @* Step 1: Servizi *@
+                                    <MudText Typo="Typo.caption" Class="mb-1"><b>1. Servizi da includere</b></MudText>
                                     @{
                                         var assignableWos = GetScheduledUnassignedWOs();
                                     }
                                     @if (assignableWos.Count == 0)
                                     {
-                                        <MudAlert Severity="Severity.Info" Dense="true">Nessun servizio programmabile per questo cliente. Un servizio appare qui quando il WorkOrder e' in <b>Da programmare</b> o <b>Programmato</b>.</MudAlert>
+                                        <MudAlert Severity="Severity.Info" Dense="true">Nessun servizio programmabile. Appare quando il WorkOrder e' in <b>Da programmare</b> o <b>Programmato</b>.</MudAlert>
                                     }
                                     else
                                     {
-                                        <MudPaper Class="pa-2" Outlined="true">
+                                        <MudPaper Class="pa-2 mb-3" Outlined="true">
                                             @foreach (var wo in assignableWos)
                                             {
                                                 var woId = wo.Id;
@@ -1001,6 +1035,7 @@
                                                                  ValueChanged="@((bool ck) => { if (ck) _selectedNewMissionWoIds.Add(woId); else _selectedNewMissionWoIds.Remove(woId); StateHasChanged(); })" />
                                                     @if (isOpsWo) { <MudChip T="string" Size="Size.Small" Color="Color.Warning">OPS</MudChip> }
                                                     <MudChip T="string" Size="Size.Small" Color="@(sameDay ? Color.Info : Color.Default)">@wo.ServiceType.Type</MudChip>
+                                                    @if (wo.ServiceType.IsAutonomous) { <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.Store">Autonomo</MudChip> }
                                                     <MudText Typo="Typo.caption">@(wo.ServiceAddress ?? "") — data prog.: @(wo.ScheduledDate?.ToString("dd/MM") ?? "—") — @wo.Status</MudText>
                                                     @if (existingMissionCount > 0)
                                                     {
@@ -1009,13 +1044,86 @@
                                                 </div>
                                             }
                                         </MudPaper>
+
+                                        var selectedWos = assignableWos.Where(w => _selectedNewMissionWoIds.Contains(w.Id)).ToList();
+                                        var allAutonomous = selectedWos.Count > 0 && selectedWos.All(w => w.ServiceType.IsAutonomous);
+
+                                        @if (allAutonomous)
+                                        {
+                                            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+                                                <MudIcon Icon="@Icons.Material.Filled.Store" Size="Size.Small" />
+                                                Tutti i servizi selezionati sono <b>self-service</b>: il cliente viene al magazzino. Non servono veicoli — basta un team di accoglienza.
+                                            </MudAlert>
+                                        }
+                                        else
+                                        {
+                                            @* Step 2: Veicoli (solo se almeno un WO non autonomo) *@
+                                            <MudText Typo="Typo.caption" Class="mb-1"><b>2. Veicoli assegnati</b></MudText>
+                                            <div class="resource-grid mb-3">
+                                                @foreach (var v in State.Vehicles.Where(x => x.Status == "Available"))
+                                                {
+                                                    var vId = v.Id;
+                                                    var isSel = _selectedVehicleIds.Contains(vId);
+                                                    <div class="resource-chip @(isSel ? "selected" : "")"
+                                                         @onclick="@(() => { if (isSel) _selectedVehicleIds.Remove(vId); else _selectedVehicleIds.Add(vId); StateHasChanged(); })">
+                                                        <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Small" />
+                                                        <div class="resource-info">
+                                                            <div class="resource-name">@v.Name</div>
+                                                            <div class="resource-meta">@v.Plate · @v.Capacity m³</div>
+                                                        </div>
+                                                        @if (isSel) { <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Primary" /> }
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+
+                                        @* Step 3: Team *@
+                                        <MudText Typo="Typo.caption" Class="mb-1"><b>3. Team esecutivo</b></MudText>
+                                        <div class="d-flex gap-2 align-center flex-wrap mb-2">
+                                            <MudSelect @bind-Value="_selectedTeamId" T="string" Label="Seleziona team esistente" Dense="true" Style="max-width:300px" Margin="Margin.Dense">
+                                                <MudSelectItem T="string" Value="@((string?)null)">— auto (crea team dai primi 2 operatori) —</MudSelectItem>
+                                                @foreach (var t in currentPlanning.Teams)
+                                                {
+                                                    <MudSelectItem T="string" Value="@t.Id">@string.Join(" + ", t.OperatorIds.Take(3).Select(oid => State.Operators.FirstOrDefault(o => o.Id == oid)?.FullName ?? oid))</MudSelectItem>
+                                                }
+                                            </MudSelect>
+                                            <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info"
+                                                       OnClick="@(() => { _showNewTeamForm = !_showNewTeamForm; })">
+                                                @(_showNewTeamForm ? "Chiudi" : "+ Componi nuovo team")
+                                            </MudButton>
+                                        </div>
+                                        @if (_showNewTeamForm)
+                                        {
+                                            <MudPaper Class="pa-2 mb-3" Outlined="true">
+                                                <MudText Typo="Typo.caption" Class="mb-1"><b>Operatori:</b></MudText>
+                                                <div class="resource-grid">
+                                                    @foreach (var op in State.Operators)
+                                                    {
+                                                        var opId = op.Id;
+                                                        var isSel = _newTeamOperatorIds.Contains(opId);
+                                                        <div class="resource-chip @(isSel ? "selected" : "")"
+                                                             @onclick="@(() => { if (isSel) _newTeamOperatorIds.Remove(opId); else _newTeamOperatorIds.Add(opId); StateHasChanged(); })">
+                                                            <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" />
+                                                            <div class="resource-info">
+                                                                <div class="resource-name">@op.FullName</div>
+                                                            </div>
+                                                            @if (isSel) { <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Primary" /> }
+                                                        </div>
+                                                    }
+                                                </div>
+                                                <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled" Class="mt-2"
+                                                           Disabled="@(_newTeamOperatorIds.Count == 0)"
+                                                           OnClick="@(() => CreateTeamForPlanning(currentPlanning))">Crea team (@_newTeamOperatorIds.Count operatori)</MudButton>
+                                            </MudPaper>
+                                        }
+
                                         <div class="d-flex gap-2 mt-2 align-center">
                                             <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
                                                        StartIcon="@Icons.Material.Filled.AddTask"
                                                        Disabled="@(_selectedNewMissionWoIds.Count == 0)"
                                                        OnClick="CreateMissionForSelectedWos">Crea Mission con selezione (@_selectedNewMissionWoIds.Count svc)</MudButton>
                                             <MudButton Size="Size.Small" Color="Color.Default" Variant="Variant.Text"
-                                                       OnClick="@(() => { _selectedNewMissionWoIds.Clear(); StateHasChanged(); })">Deseleziona</MudButton>
+                                                       OnClick="@(() => { _selectedNewMissionWoIds.Clear(); StateHasChanged(); })">Deseleziona tutto</MudButton>
                                         </div>
                                     }
                                 </MudCardContent>
@@ -1027,20 +1135,22 @@
                     @if (GetLeadShifts().Any())
                     {
                         <MudDivider Class="my-2" />
-                        <MudText Typo="Typo.h6" Class="mb-2"><MudIcon Icon="@Icons.Material.Filled.DirectionsCar" Size="Size.Small" /> Execution</MudText>
+                        <MudText Typo="Typo.h6" Class="mb-2"><span class="bc-section-label execution">Execution</span><MudIcon Icon="@Icons.Material.Filled.DirectionsCar" Size="Size.Small" /> Shift</MudText>
                         @foreach (var shift in GetLeadShifts())
                         {
-                            <MudCard Class="mb-2" Elevation="1">
+                            <MudCard Class="mb-2 bc-execution-pane" Elevation="1">
                                 <MudCardContent>
                                     <div class="d-flex align-center gap-2 mb-1">
                                         <MudText Typo="Typo.body2"><b>Shift @shift.Id.Substring(0, Math.Min(8, shift.Id.Length))...</b></MudText>
                                         <MudChip T="string" Size="Size.Small" Color="@ShiftColor(shift.Status)">@shift.Status</MudChip>
+                                        <MudSpacer />
+                                        <EntityActions Kind="Shift" Ids="@(new[] { shift.Id })" Entity="shift" OnChanged="StateHasChanged" />
                                     </div>
                                     <MudText Typo="Typo.caption">Data: @shift.Date.ToString("dd/MM/yyyy") | Mission: @(shift.MissionId ?? "Unplanned")</MudText>
 
                                     @* ServiceEntries table *@
                                     <MudSimpleTable Dense="true" Elevation="0" Class="mt-1">
-                                        <thead><tr><th>ServiceEntry</th><th>Tipo</th><th>Stato</th><th>Cliente</th><th>Azione</th></tr></thead>
+                                        <thead><tr><th>ServiceEntry</th><th>Tipo</th><th>Stato</th><th>Cliente</th><th>Azione</th><th></th></tr></thead>
                                         <tbody>
                                         @foreach (var se in shift.ServiceEntries)
                                         {
@@ -1056,25 +1166,12 @@
                                                                    OnClick="@(() => CompleteServiceEntry(shift, se))">Completa</MudButton>
                                                     }
                                                 </td>
+                                                <td><EntityActions Kind="ServiceEntry" Ids="@(new[] { shift.Id, se.Id })" Entity="se" OnChanged="StateHasChanged" /></td>
                                             </tr>
                                         }
                                         </tbody>
                                     </MudSimpleTable>
                                     <MudText Typo="Typo.caption" Class="mt-1">Tasks: @shift.Tasks.Count</MudText>
-                                    @if (shift.Tasks.Any(t => t.IsExtra))
-                                    {
-                                        <MudTooltip Text="Attivita' svolte dal team non previste dal servizio venduto (es. oggetti ulteriori, imballaggi aggiuntivi). Saranno rimeditate da Commercial in fase di verifica.">
-                                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.PriorityHigh">
-                                                @shift.Tasks.Count(t => t.IsExtra) task extra non preventivati
-                                            </MudChip>
-                                        </MudTooltip>
-                                    }
-                                    @if (shift.Status == "InProgress")
-                                    {
-                                        <MudButton Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined" Class="mt-1"
-                                                   StartIcon="@Icons.Material.Filled.AddCircleOutline"
-                                                   OnClick="@(() => AddExtraTask(shift))">+ Task extra (attivita' non preventivata)</MudButton>
-                                    }
 
                                     <div class="d-flex gap-2 mt-2">
                                         @if (shift.Status == "Created")
@@ -1082,21 +1179,19 @@
                                             <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
                                                        OnClick="@(() => AvviaShift(shift))">Avvia</MudButton>
                                         }
-                                        @if (shift.Status == "InProgress")
-                                        {
-                                            <MudButton Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled"
-                                                       OnClick="@(() => SimulaEsecuzione(shift))">Simula Esecuzione</MudButton>
-                                            <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
-                                                       OnClick="@(() => SegnalaProblema(shift))">Segnala Problema → In Pausa</MudButton>
-                                        }
                                         @if (shift.Status == "Paused")
                                         {
                                             <MudChip T="string" Size="Size.Small" Color="Color.Error">In pausa — attendo decisione Commercial</MudChip>
                                         }
-                                        @if (shift.Status == "InProgress" && shift.ServiceEntries.All(se => se.Completed))
+                                        @if (shift.Status == "InProgress")
                                         {
-                                            <MudButton Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
-                                                       OnClick="@(() => CompletaShift(shift))">Completa</MudButton>
+                                            <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
+                                                       OnClick="@(() => SegnalaProblema(shift))">Segnala Problema → In Pausa</MudButton>
+                                            @if (shift.ServiceEntries.All(se => se.Completed) && shift.ServiceEntries.Count > 0)
+                                            {
+                                                <MudButton Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
+                                                           OnClick="@(() => CompletaShift(shift))">Completa</MudButton>
+                                            }
                                         }
                                     </div>
                                 </MudCardContent>
@@ -1108,9 +1203,9 @@
                     @if (GetLeadObjects().Any())
                     {
                         <MudDivider Class="my-2" />
-                        <MudText Typo="Typo.h6" Class="mb-2"><MudIcon Icon="@Icons.Material.Filled.Inventory" Size="Size.Small" /> Oggetti</MudText>
+                        <MudText Typo="Typo.h6" Class="mb-2"><span class="bc-section-label execution">Execution</span><MudIcon Icon="@Icons.Material.Filled.Inventory" Size="Size.Small" /> Oggetti</MudText>
                         <MudSimpleTable Dense="true" Elevation="0">
-                            <thead><tr><th>Nome</th><th>Volume</th><th>Status</th><th>Posizione</th></tr></thead>
+                            <thead><tr><th>Nome</th><th>Volume</th><th>Status</th><th>Posizione</th><th></th></tr></thead>
                             <tbody>
                             @foreach (var obj in GetLeadObjects())
                             {
@@ -1119,91 +1214,14 @@
                                     <td>@($"{obj.Volume:F1} m3")</td>
                                     <td><MudChip T="string" Size="Size.Small" Color="@ObjColor(obj.Status.ToString())">@obj.Status</MudChip></td>
                                     <td>@(obj.Position?.WarehouseId ?? "-")</td>
+                                    <td><EntityActions Kind="PhysicalObject" Ids="@(new[] { obj.Id })" Entity="obj" OnChanged="StateHasChanged" /></td>
                                 </tr>
                             }
                             </tbody>
                         </MudSimpleTable>
                     }
 
-                    @* ── 6. CROSS-BC TRACEABILITY ── *@
-                    @if (GetLeadWorkOrders().Any())
-                    {
-                        <MudDivider Class="my-2" />
-                        <MudExpansionPanels>
-                            <MudExpansionPanel>
-                                <TitleContent>
-                                    <div class="d-flex align-center gap-1">
-                                        <MudIcon Icon="@Icons.Material.Filled.AccountTree" Size="Size.Small" />
-                                        <MudText Typo="Typo.subtitle2">Tracciabilita' Cross-BC</MudText>
-                                    </div>
-                                </TitleContent>
-                                <ChildContent>
-                                @foreach (var deal in GetLeadDeals())
-                                {
-                                    foreach (var quotation in deal.Quotations.Where(q => q.IsAccepted))
-                                    {
-                                        foreach (var svc in quotation.Services)
-                                        {
-                                            var svcWO = svc.WorkOrderId != null ? State.WorkOrders.FirstOrDefault(w => w.Id == svc.WorkOrderId) : null;
-                                            var svcMission = svcWO != null ? State.Plannings.SelectMany(p => p.Missions).FirstOrDefault(m => m.ServiceRefs.Any(sr => sr.ServiceId == svcWO.Id)) : null;
-                                            var svcShift = svcMission != null ? State.Shifts.FirstOrDefault(s => s.MissionId == svcMission.Id) : null;
-                                            var svcQuestionnaire = svc.QuestionnaireId != null ? State.Questionnaires.FirstOrDefault(q => q.Id == svc.QuestionnaireId) : null;
-                                            var svcPayment = State.Payments.FirstOrDefault(p => p.QuotationId == quotation.Id);
-
-                                            <MudPaper Class="pa-2 mb-2" Outlined="true">
-                                                <div class="d-flex flex-wrap gap-1 align-center">
-                                                    @* ServiceBooked (Commercial) *@
-                                                    <MudChip T="string" Size="Size.Small" Color="@SvcBookedStatusColor(svc.Status)">SB @svc.Type — @svc.Status</MudChip>
-                                                    <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
-                                                    @* Questionnaire *@
-                                                    @if (svcQuestionnaire != null)
-                                                    {
-                                                        <MudChip T="string" Size="Size.Small" Color="@(svcQuestionnaire.IsVerified ? Color.Success : svcQuestionnaire.IsCompleted ? Color.Warning : Color.Default)">
-                                                            Quest @(svcQuestionnaire.IsVerified ? "V" : svcQuestionnaire.IsCompleted ? "!" : "...")
-                                                        </MudChip>
-                                                        <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
-                                                    }
-                                                    @* WorkOrder (Operational) *@
-                                                    @if (svcWO != null)
-                                                    {
-                                                        <MudChip T="string" Size="Size.Small" Color="@WOStatusColor(svcWO.Status.ToString())">WO @svcWO.ServiceType.Type — @svcWO.Status</MudChip>
-                                                        <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
-                                                    }
-                                                    else
-                                                    {
-                                                        <MudChip T="string" Size="Size.Small" Color="Color.Default">WO —</MudChip>
-                                                        <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
-                                                    }
-                                                    @* Mission *@
-                                                    <MudChip T="string" Size="Size.Small" Color="@(svcMission != null ? Color.Info : Color.Default)">
-                                                        Mission @(svcMission != null ? (svcMission.IsCancelled ? "Cancelled" : "OK") : "—")
-                                                    </MudChip>
-                                                    <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
-                                                    @* Shift *@
-                                                    <MudChip T="string" Size="Size.Small" Color="@(svcShift != null ? ShiftColor(svcShift.Status) : Color.Default)">
-                                                        Shift @(svcShift?.Status ?? "—")
-                                                    </MudChip>
-                                                    @* Payment *@
-                                                    @if (svcPayment != null)
-                                                    {
-                                                        <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
-                                                        <MudChip T="string" Size="Size.Small" Color="@(svcPayment.Status == WeTacoo.Domain.Financial.Enums.PaymentStatus.Paid ? Color.Success : Color.Warning)">
-                                                            Pay @svcPayment.Status
-                                                        </MudChip>
-                                                    }
-                                                </div>
-                                                @if (svc.SelectedObjectIds.Count > 0)
-                                                {
-                                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">Oggetti: @svc.SelectedObjectIds.Count selezionati</MudText>
-                                                }
-                                            </MudPaper>
-                                        }
-                                    }
-                                }
-                                </ChildContent>
-                            </MudExpansionPanel>
-                        </MudExpansionPanels>
-                    }
+                    @* Cross-BC traceability panel rimosso (review 2026-04-16): poco chiaro, sostituito dalla vista interattiva in /bc/instances *@
 
                     @* ── 7. PAYMENTS ── *@
                     @if (GetLeadPayments().Any())
@@ -1221,7 +1239,7 @@
                         }
                         @if (oneOffPayments.Count > 0)
                         {
-                            <MudText Typo="Typo.h6" Class="@($"mb-2 {(recurringPayments.Count > 0 ? "mt-3" : "")}")"><MudIcon Icon="@Icons.Material.Filled.Payment" Size="Size.Small" /> Pagamenti Servizi</MudText>
+                            <MudText Typo="Typo.h6" Class="@($"mb-2 {(recurringPayments.Count > 0 ? "mt-3" : "")}")"><span class="bc-section-label financial">Financial</span><MudIcon Icon="@Icons.Material.Filled.Payment" Size="Size.Small" /> Pagamenti Servizi</MudText>
                             @foreach (var payment in oneOffPayments)
                             {
                                 @RenderPaymentCard(payment)
@@ -1358,47 +1376,14 @@
         </MudPaper>
     </MudItem>
 
-    @* ══════════════════ BOTTOM: Event Timeline (full width) ══════════════════ *@
-    <MudItem xs="12">
-        <MudPaper Class="pa-3" Elevation="2" Style="max-height:300px; overflow-y:auto;">
-            <MudText Typo="Typo.h6" Class="mb-2"><MudIcon Icon="@Icons.Material.Filled.Timeline" Size="Size.Small" /> Eventi</MudText>
-            @if (string.IsNullOrEmpty(_selectedLeadId))
-            {
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Seleziona un cliente per vedere gli eventi.</MudText>
-            }
-            else
-            {
-                var leadEvents = GetLeadEvents();
-                @if (!leadEvents.Any())
-                {
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">Nessun evento per questo cliente.</MudText>
-                }
-                else
-                {
-                    <div class="d-flex flex-wrap gap-2">
-                        @foreach (var evt in leadEvents)
-                        {
-                            <MudPaper Class="pa-2" Outlined="true" Style="min-width:250px; max-width:350px;">
-                                <div class="d-flex align-center gap-1">
-                                    <MudChip T="string" Size="Size.Small" Color="@GetBCColor(evt.SourceBC)">@evt.SourceBC</MudChip>
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@evt.OccurredAt.ToString("HH:mm:ss")</MudText>
-                                </div>
-                                <MudText Typo="Typo.body2"><b>@HumanDescription(evt)</b></MudText>
-                                <MudText Typo="Typo.caption" Color="Color.Secondary" Style="font-style:italic;">@evt.Description</MudText>
-                            </MudPaper>
-                        }
-                    </div>
-                }
-            }
-        </MudPaper>
-    </MudItem>
+    @* Events panel moved into left column (review 2026-04-16) *@
 </MudGrid>
 
 <style>
-    .quot-section { padding: 8px 10px; border-left-width: 3px !important; }
-    .quot-section.svc-section { border-left-color: #1976d2 !important; background: #f3f8ff; }
-    .quot-section.prod-section { border-left-color: #7b1fa2 !important; background: #f7f2fb; }
-    .quot-section.plan-section { border-left-color: #2e7d32 !important; background: #f1f8f2; }
+    .quot-section { padding: 8px 10px; border-left-width: 3px !important; background: #ffffff; }
+    .quot-section.svc-section { border-left-color: #1976d2 !important; background: #eaf2fb; }
+    .quot-section.prod-section { border-left-color: #7b1fa2 !important; background: #f4eaf7; }
+    .quot-section.plan-section { border-left-color: #2e7d32 !important; background: #ebf4ec; }
 
     .quot-section-header {
         display: flex; align-items: center; gap: 8px; font-size: 0.88rem;
@@ -1416,6 +1401,52 @@
     .item-card-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
     .item-card-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; align-items: center; }
     .ms-auto { margin-left: auto; }
+
+    /* ── BC color coding per le schede del Workspace ────────────────── */
+    /* Commercial = blu | Operational = arancione | Execution = rosso | Financial = verde */
+    /* Deal: tono blu piu' scuro; Quotation (nested): tono intermedio; Servizi/Prodotti/Piani (piu' interni): propri colori distinti */
+    .bc-commercial-pane { border-left: 4px solid #1976d2 !important; background: #d6e7fa; }
+    .mud-expansion-panels .mud-expansion-panels .bc-commercial-pane,
+    .bc-commercial-pane .bc-commercial-pane { background: #ecf3fb !important; }
+    .bc-op-pane { border-left: 4px solid #e65100 !important; background: #fff0e0; }
+    .bc-execution-pane { border-left: 4px solid #c62828 !important; background: #fce7e7; }
+    .bc-financial-pane { border-left: 4px solid #2e7d32 !important; background: #e3f2e4; }
+
+    .bc-section-label {
+        display: inline-block; font-size: 0.7rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 8px;
+        border-radius: 3px; margin-right: 8px;
+    }
+    .bc-section-label.commercial { background: #1976d2; color: #fff; }
+    .bc-section-label.op { background: #e65100; color: #fff; }
+    .bc-section-label.execution { background: #c62828; color: #fff; }
+    .bc-section-label.financial { background: #2e7d32; color: #fff; }
+
+    /* ── Existing missions panel — ben separato ────────────────────── */
+    .existing-missions-box {
+        border: 2px dashed #e65100;
+        background: #fff7f0;
+        border-radius: 6px;
+    }
+
+    /* ── Resource picker (veicoli + operatori) ───────────────────────── */
+    .resource-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .resource-chip {
+        display: flex; align-items: center; gap: 8px;
+        padding: 6px 10px;
+        background: #fff; border: 1px solid #ccc; border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        min-width: 160px;
+    }
+    .resource-chip:hover { border-color: #1976d2; background: #f5faff; }
+    .resource-chip.selected {
+        border-color: #1976d2; background: #e3f2fd;
+        box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.15);
+    }
+    .resource-info { display: flex; flex-direction: column; line-height: 1.2; }
+    .resource-name { font-weight: 500; font-size: 0.85rem; color: #222; }
+    .resource-meta { font-size: 0.72rem; color: #888; }
 </style>
 
 @code {
@@ -1437,9 +1468,6 @@
             _selectedLeadId = State.Leads.Last(l => l.DealIds.Count > 0).Id;
     }
 
-    private bool _showNewDeal;
-    private string _newDealComposition = "deposito";
-    private string? _newDealAreaId;
     private bool _showNewQuotation;
     private string _quotationDealId = "";
     private bool _showInlineNewLead;
@@ -1448,18 +1476,19 @@
     // Quotation form
     private string? _selectedProductTemplateId;
     private List<WeTacoo.Domain.Commercial.Entities.Product> _quotationProducts = [];
+    // Custom product (non-template)
+    private string _customProductName = "";
+    private decimal _customProductPrice;
 
     // Inline editing fields (existing quotations)
     private string? _inlineProductId;
     private WeTacoo.Domain.Commercial.Enums.ServiceBookedType _inlineSvcType = WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro;
-    private string _inlineSvcStreet = "";
-    private string _inlineSvcCity = "";
+    private string _inlineSvcZip = "";
 
     // New quotation form — services + plan
     private List<WeTacoo.Domain.Commercial.Entities.ServiceBooked> _quotationServices = [];
     private WeTacoo.Domain.Commercial.Enums.ServiceBookedType? _newQuotSvcType;
-    private string _newQuotSvcStreet = "";
-    private string _newQuotSvcCity = "";
+    private string _newQuotSvcZip = "";
     private string _newQuotPlanDesc = "Piano deposito";
     private decimal _newQuotPlanFee = 89.90m;
     private decimal _newQuotPlanM3 = 10;
@@ -1489,9 +1518,6 @@
     // Payment creation
     private decimal _newPaymentAmount;
     private string _newPaymentType = "OneOff";
-
-    // Autonomo toggle
-    private bool _isAutonomo;
 
     // ── State subscription ──
     private Action _onStateChanged = null!;
@@ -1557,7 +1583,8 @@
         var lead = State.Leads.First(l => l.Id == _selectedLeadId);
 
         // Tipo Deal e' derivato: diventa Recurring quando una Quotation con DraftPlan viene accettata
-        var deal = new WeTacoo.Domain.Commercial.Deal { LeadId = lead.Id, AreaId = _newDealAreaId ?? State.Areas.FirstOrDefault()?.Id };
+        // Area non e' piu' richiesta a livello Deal (review 2026-04-16): vive sui singoli servizi e sull'ActivePlan.
+        var deal = new WeTacoo.Domain.Commercial.Deal { LeadId = lead.Id };
         State.Deals.Add(deal);
         lead.AddDeal(deal.Id);
         State.PublishEvent(new WeTacoo.Domain.Events.DealCreatedEvent(deal.Id, lead.Id));
@@ -1565,7 +1592,6 @@
         var mkt = State.MarketingClients.FirstOrDefault(m => m.CommercialLeadId == lead.Id);
         mkt?.AddDeal(deal.Id);
 
-        _showNewDeal = false;
         Snackbar.Add($"Deal creato — tipo determinato alla finalizzazione della Quotation", Severity.Success);
         State.NotifyStateChanged();
     }
@@ -1601,7 +1627,7 @@
         _quotationServices = [];
         _selectedProductTemplateId = null;
         _newQuotSvcType = null;
-        _newQuotSvcStreet = _newQuotSvcCity = "";
+        _newQuotSvcZip = "";
         _newQuotPlanDesc = "Piano deposito";
         _newQuotPlanFee = 89.90m;
         _newQuotPlanM3 = 10;
@@ -1614,27 +1640,27 @@
         _quotationServices.Add(new WeTacoo.Domain.Commercial.Entities.ServiceBooked
         {
             Type = _newQuotSvcType.Value,
-            ServiceAddress = new WeTacoo.Domain.Commercial.ValueObjects.Address(_newQuotSvcStreet, _newQuotSvcCity, "", null)
+            ServiceAddress = new WeTacoo.Domain.Commercial.ValueObjects.Address(_newQuotSvcZip)
         });
-        _newQuotSvcStreet = _newQuotSvcCity = "";
+        _newQuotSvcZip = "";
     }
 
     private void AddTraslocoToNewQuotation()
     {
-        // Trasloco = Ritiro (origine) + Consegna (destinazione). Via/Citta correnti come origine — l'utente
-        // puo' editare le destinazioni delle singole entry dopo l'aggiunta.
+        // Trasloco = Ritiro (origine) + Consegna (destinazione). CAP corrente come origine — l'utente
+        // puo' editare gli indirizzi delle singole entry dopo l'aggiunta.
         _quotationServices.Add(new WeTacoo.Domain.Commercial.Entities.ServiceBooked
         {
             Type = WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro,
-            ServiceAddress = new WeTacoo.Domain.Commercial.ValueObjects.Address(_newQuotSvcStreet, _newQuotSvcCity, "", null)
+            ServiceAddress = new WeTacoo.Domain.Commercial.ValueObjects.Address(_newQuotSvcZip)
         });
         _quotationServices.Add(new WeTacoo.Domain.Commercial.Entities.ServiceBooked
         {
             Type = WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Consegna,
-            ServiceAddress = new WeTacoo.Domain.Commercial.ValueObjects.Address(_newQuotSvcStreet, _newQuotSvcCity, "", null)
+            ServiceAddress = new WeTacoo.Domain.Commercial.ValueObjects.Address(_newQuotSvcZip)
         });
         Snackbar.Add("Trasloco aggiunto: Ritiro + Consegna — edita gli indirizzi delle entry", Severity.Info);
-        _newQuotSvcStreet = _newQuotSvcCity = "";
+        _newQuotSvcZip = "";
     }
 
     private void AddProductToNewQuotation()
@@ -1647,6 +1673,17 @@
             ProductTemplateId = pt.Id, Name = pt.Name, Description = pt.Description, Price = pt.BasePrice
         });
         _selectedProductTemplateId = null;
+    }
+
+    private void AddCustomProductToNewQuotation()
+    {
+        if (string.IsNullOrWhiteSpace(_customProductName) || _customProductPrice <= 0) return;
+        _quotationProducts.Add(new WeTacoo.Domain.Commercial.Entities.Product
+        {
+            ProductTemplateId = "", Name = _customProductName.Trim(), Description = "", Price = _customProductPrice
+        });
+        _customProductName = "";
+        _customProductPrice = 0;
     }
 
     private void AddProductToExistingQuotation(WeTacoo.Domain.Commercial.Entities.Quotation q)
@@ -1846,10 +1883,11 @@
                             WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Smaltimento => WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Smaltimento,
                             _ => WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Ritiro
                         },
-                        false, false,
-                        isTrasloco && (svc.Type is WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro or WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Consegna),
-                        deal.AreaId),
-                    ServiceAddress = svc.ServiceAddress?.Street,
+                        IsPartial: false,
+                        IsAutonomous: svc.IsAutonomous,
+                        IsTrasloco: isTrasloco && (svc.Type is WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro or WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Consegna),
+                        AreaId: deal.AreaId),
+                    ServiceAddress = svc.ServiceAddress?.ZipCode,
                     ContactName = $"{lead.Personal.FirstName} {lead.Personal.LastName}",
                     EstimatedVolume = deal.ActivePlan?.CurrentM3 ?? 0,
                     ScheduledDate = svc.ScheduledDate,
@@ -2485,13 +2523,13 @@
             {
                 ServiceBookedId = svc.Id,
                 QuestionnaireId = svc.QuestionnaireId,
-                Caratteristiche = $"Sopralluogo per {svc.Type} a {svc.ServiceAddress?.Street}",
+                Caratteristiche = $"Sopralluogo per {svc.Type} a {svc.ServiceAddress?.ZipCode}",
                 DataRichiesta = DateTime.UtcNow,
             };
             svc.InspectionId = inspection.Id;
             State.Inspections.Add(inspection);
 
-            State.PublishEvent(new WeTacoo.Domain.Events.SopralluogoRichiestoEvent(svc.Id, svc.QuestionnaireId, svc.ServiceAddress?.Street));
+            State.PublishEvent(new WeTacoo.Domain.Events.SopralluogoRichiestoEvent(svc.Id, svc.QuestionnaireId, svc.ServiceAddress?.ZipCode));
             Snackbar.Add($"Sopralluogo richiesto per servizio {svc.Type} — Inspection creata", Severity.Success);
             State.NotifyStateChanged();
         }
@@ -2538,11 +2576,13 @@
     // ══════════════════════════════════════════════════════════════
     private RenderFragment RenderPaymentCard(WeTacoo.Domain.Financial.Payment payment) => __builder =>
     {
-        <MudCard Class="mb-2" Elevation="1">
+        <MudCard Class="mb-2 bc-financial-pane" Elevation="1">
             <MudCardContent>
                 <div class="d-flex align-center gap-2 mb-1">
                     <MudText Typo="Typo.body2"><b>@payment.Id.Substring(0, Math.Min(8, payment.Id.Length))...</b></MudText>
                     <MudChip T="string" Size="Size.Small" Color="@(payment.Status == WeTacoo.Domain.Financial.Enums.PaymentStatus.Paid ? Color.Success : Color.Warning)">@payment.Status</MudChip>
+                    <MudSpacer />
+                    <EntityActions Kind="Payment" Ids="@(new[] { payment.Id })" Entity="payment" OnChanged="StateHasChanged" />
                 </div>
                 @if (payment.Products.Count > 0)
                 {
@@ -2564,6 +2604,8 @@
                             <MudButton Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
                                        OnClick="@(() => ExecuteCharge(payment, c))">Esegui</MudButton>
                         }
+                        <MudSpacer />
+                        <EntityActions Kind="Charge" Ids="@(new[] { payment.Id, c.Id })" Entity="c" OnChanged="StateHasChanged" />
                     </div>
                 }
                 @* Addebiti gestiti da Commercial *@
@@ -3063,16 +3105,17 @@
         _ => Color.Secondary
     };
 
+    // Allineato al color coding delle card del Workspace (bc-*-pane)
     private Color GetBCColor(string bc) => bc switch
     {
-        "Commercial" => Color.Primary,
-        "Operational" => Color.Warning,
-        "Execution" => Color.Success,
-        "Financial" => Color.Error,
+        "Commercial" => Color.Primary,       // blu
+        "Operational" => Color.Warning,      // arancione
+        "Execution" => Color.Error,          // rosso
+        "Financial" => Color.Success,        // verde
         "SharedInfrastructure" => Color.Info,
-        "Identity" => Color.Dark,
+        "Identity" => Color.Tertiary,
         "Marketing" => Color.Secondary,
-        "Happiness" => Color.Tertiary,
+        "Happiness" => Color.Dark,
         _ => Color.Default
     };
 

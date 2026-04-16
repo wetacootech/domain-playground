@@ -1,0 +1,76 @@
+@inject EntityAdminService Admin
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6"><MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-1" />Nuovo @Kind</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_requirements.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true">Nessun riferimento richiesto. Conferma per creare con valori di default.</MudAlert>
+        }
+        else
+        {
+            <MudText Typo="Typo.caption" Class="mb-2">Seleziona i riferimenti richiesti:</MudText>
+            @foreach (var req in _requirements)
+            {
+                var name = req.Name;
+                var target = req.Target;
+                var options = Admin.GetArInstancesForSelect(target);
+                <MudSelect T="string" Label="@($"{name} ({target})")"
+                           Value="@GetRef(name)"
+                           ValueChanged="@(v => SetRef(name, v))"
+                           Dense="true" Margin="Margin.Dense" Class="mb-2">
+                    <MudSelectItem T="string" Value="@("")">— scegli —</MudSelectItem>
+                    @foreach (var opt in options)
+                    {
+                        <MudSelectItem T="string" Value="@opt.Id">@opt.Id — @opt.Label</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Annulla</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Create"
+                   Disabled="@(_requirements.Any(r => string.IsNullOrEmpty(GetRef(r.Name))))">Crea</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string Kind { get; set; } = "";
+
+    private List<(string Name, string Target)> _requirements = new();
+    private Dictionary<string, string> _refs = new();
+
+    protected override void OnInitialized()
+    {
+        _requirements = EntityAdminService.GetCreateRequirements(Kind);
+    }
+
+    private string GetRef(string name) => _refs.TryGetValue(name, out var v) ? v : "";
+    private void SetRef(string name, string? v) => _refs[name] = v ?? "";
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Create()
+    {
+        try
+        {
+            var created = Admin.CreateNew(Kind, _refs);
+            if (created == null)
+            {
+                Snackbar.Add($"Creazione {Kind} fallita: riferimenti non validi.", Severity.Error);
+                return;
+            }
+            Snackbar.Add($"{Kind} creato.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(created));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+    }
+}

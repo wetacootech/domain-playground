@@ -38,7 +38,7 @@ public class UC11_SmaltimentoTests
         q.Services.Add(new ServiceBooked
         {
             Type = ServiceBookedType.Consegna,
-            ServiceAddress = new Address("Via Verdi 10", "Milano", "20100", "area-mi"),
+            ServiceAddress = new Address("20100", "area-mi"),
             SelectedObjectIds = ["divano", "sedia1", "sedia2"]
         });
 

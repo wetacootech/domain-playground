@@ -11,21 +11,20 @@ public static class EditableFieldsWhitelist
     public static readonly Dictionary<string, string[]> Paths = new()
     {
         ["Lead"] = new[] { "Personal.FirstName", "Personal.LastName", "Personal.Email", "Personal.Phone", "IdentityId" },
-        ["Deal"] = new[] { "AreaId" },
-        ["Quotation"] = new[] { "PaymentCondition.VatRate", "PaymentCondition.PaymentDays" },
-        ["Product"] = new[] { "Name", "Description", "Price", "ProductTemplateId" },
+        ["Deal"] = new string[] { },
+        ["Quotation"] = new string[] { },
+        ["Product"] = new[] { "Name", "Description", "Price" },
         ["ServiceBooked"] = new[] {
-            "Type", "Notes", "ScheduledDate", "ScheduledSlot",
-            "ServiceAddress.Street", "ServiceAddress.City", "ServiceAddress.ZipCode", "ServiceAddress.AreaId",
-            "DestinationAddress.Street", "DestinationAddress.City", "DestinationAddress.ZipCode", "DestinationAddress.AreaId"
+            "Type", "ScheduledDate", "ScheduledSlot",
+            "ServiceAddress.AreaId"
         },
         ["DraftPlan"] = new[] { "Description", "MonthlyFee", "EstimatedM3", "AreaId" },
-        ["WorkOrder"] = new[] { "ServiceAddress", "DestinationAddress", "Notes", "EstimatedVolume", "ScheduledDate", "ScheduledSlot" },
+        ["WorkOrder"] = new[] { "EstimatedVolume", "ScheduledDate", "ScheduledSlot" },
         ["Planning"] = new[] { "Date" },
-        ["Mission"] = new[] { "TeamId", "TimeSlot", "Notes" },
+        ["Mission"] = new[] { "TeamId", "VehicleResourceIds", "Notes" },
         ["PlanningTeam"] = new[] { "Notes" },
         ["Resource"] = new[] { "ResourceType", "SourceId", "AreaId", "AvailabilitySlot", "Notes" },
-        ["Shift"] = new[] { "MissionId", "IsAutonomous", "Date" },
+        ["Shift"] = new[] { "MissionId", "Date" },
         ["ServiceEntry"] = new[] { "Type" },
         ["OperationalTask"] = new[] { "Type", "StartTime", "EndTime", "IsExtra", "Notes" },
         ["PhysicalObject"] = new[] { "Name", "Volume", "LabelId", "GroupId", "PalletId", "LeadId", "DealId" },
@@ -44,7 +43,7 @@ public static class EditableFieldsWhitelist
         ["Question"] = new[] { "QuestionTemplateId" },
         ["Coupon"] = new[] { "Code", "DiscountPercent", "DiscountFixed", "ValidFrom", "ValidTo", "IsActive" },
         ["Salesman"] = new[] { "FirstName", "LastName", "IsActive" },
-        ["Payment"] = new[] { "PaymentType", "VatRate" },
+        ["Payment"] = new[] { "PaymentType" },
         ["Charge"] = new[] { "Amount", "DueDate", "Notes" },
         ["SimplifiedProduct"] = new[] { "Name", "Description", "Price" },
         ["FinancialClient"] = new[] { "BillingName", "BillingAddress", "VatNumber", "Notes" },

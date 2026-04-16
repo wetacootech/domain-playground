@@ -34,19 +34,19 @@ public class UC4_RitiroMultiGiornoTests
         q.Services.Add(new ServiceBooked
         {
             Type = ServiceBookedType.Ritiro,
-            ServiceAddress = new Address("Via Uffici 1", "Milano", "20100", "area-mi"),
+            ServiceAddress = new Address("20100", "area-mi"),
             Notes = "Piano terra - 75 oggetti"
         });
         q.Services.Add(new ServiceBooked
         {
             Type = ServiceBookedType.Ritiro,
-            ServiceAddress = new Address("Via Uffici 1", "Milano", "20100", "area-mi"),
+            ServiceAddress = new Address("20100", "area-mi"),
             Notes = "Primo piano - 70 oggetti"
         });
         q.Services.Add(new ServiceBooked
         {
             Type = ServiceBookedType.Ritiro,
-            ServiceAddress = new Address("Via Uffici 1", "Milano", "20100", "area-mi"),
+            ServiceAddress = new Address("20100", "area-mi"),
             Notes = "Secondo piano - 55 oggetti"
         });
         q.Products.Add(new Product { Name = "Ritiro ufficio 3 giorni", Price = 3500m });

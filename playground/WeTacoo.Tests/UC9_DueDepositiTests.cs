@@ -99,7 +99,7 @@ public class UC9_DueDepositiTests
         var dealMI = new Deal { LeadId = "lead-1" };
         var dealRM = new Deal { LeadId = "lead-1" };
 
-        var addrFirenze = new Address("Via Firenze 1", "Firenze", "50100", "area-fi");
+        var addrFirenze = new Address("50100", "area-fi");
 
         var qDeliveryMI = new Quotation { DealId = dealMI.Id, IsInitial = false };
         qDeliveryMI.Services.Add(new ServiceBooked

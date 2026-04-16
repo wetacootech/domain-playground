@@ -78,7 +78,7 @@ public class UC1_DepositoTests
             DealId = deal.Id,
             IsInitial = true,
             Products = [new Product { Name = "Deposito Premium", Price = 129.90m }],
-            Services = [new ServiceBooked { Type = ServiceBookedType.Ritiro, ServiceAddress = new Address("Via Roma 1", "Milano", "20100", "area-001") }],
+            Services = [new ServiceBooked { Type = ServiceBookedType.Ritiro, ServiceAddress = new Address("20100", "area-001") }],
         };
         quotation.DraftPlans.Add(new DraftPlan { Description = "Piano deposito", MonthlyFee = 89.90m, EstimatedM3 = 10, AreaId = "area-001" });
         deal.Quotations.Add(quotation);
@@ -102,7 +102,7 @@ public class UC1_DepositoTests
         quotation.Services.Add(new ServiceBooked
         {
             Type = ServiceBookedType.Ritiro,
-            ServiceAddress = new Address("Via Roma 1", "Milano", "20100", "area-001"),
+            ServiceAddress = new Address("20100", "area-001"),
             ScheduledDate = DateTime.Today.AddDays(5),
             ScheduledSlot = "09:00-12:00"
         });
@@ -135,7 +135,7 @@ public class UC1_DepositoTests
         var wo = new WorkOrder
         {
             ServiceBookedId = svc.Id,
-            ServiceAddress = svc.ServiceAddress?.Street,
+            ServiceAddress = svc.ServiceAddress?.ZipCode,
             ContactName = "Anna Verdi",
             ScheduledDate = svc.ScheduledDate,
             ScheduledSlot = svc.ScheduledSlot,
@@ -156,7 +156,7 @@ public class UC1_DepositoTests
             Type = WorkOrderType.Commercial,
             ServiceBookedId = svc.Id,
             ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, false, "area-001"),
-            ServiceAddress = svc.ServiceAddress?.Street,
+            ServiceAddress = svc.ServiceAddress?.ZipCode,
         };
 
         // Create Payment

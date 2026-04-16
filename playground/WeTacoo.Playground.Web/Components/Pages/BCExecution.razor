@@ -6,7 +6,7 @@
 @implements IDisposable
 
 <PageTitle>Execution BC</PageTitle>
-<MudText Typo="Typo.h4" Class="mb-2">Execution BC</MudText>
+<MudText Typo="Typo.h4" Class="mb-2 bc-page-title" Style="border-left:6px solid #c62828;padding-left:12px;">Execution BC</MudText>
 <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">Pagina di sola lettura. Avvia/Simula/Completa Shift, movimenti oggetti e operazioni magazzino si fanno dal <b>Workspace</b>.</MudAlert>
 
 <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
@@ -21,7 +21,6 @@
                         <div class="d-flex align-center gap-2 mb-2">
                             <MudText Typo="Typo.h6">Shift @s.Id</MudText>
                             <MudChip T="string" Size="Size.Small" Color="@ShiftColor(s.Status)">@s.Status</MudChip>
-                            @if (s.IsAutonomous) { <MudChip T="string" Size="Size.Small" Color="Color.Info">Autonomo</MudChip> }
                             <MudSpacer />
                             <EntityActions Kind="Shift" Ids="@(new[] { s.Id })" Entity="s" OnChanged="StateHasChanged" />
                         </div>

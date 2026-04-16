@@ -17,7 +17,7 @@ namespace WeTacoo.Tests;
 
 /// <summary>
 /// UC-12: Self-service con sorpresa.
-/// Verifica: ServiceType.IsAutonomous = true, Shift autonomo senza veicolo,
+/// Verifica: ServiceType. Shift autonomo senza veicolo,
 /// volume reale > venduto -> WO In pausa + ServiceBooked DaCompletare + Quotation ToVerify,
 /// InterventoRisolto.Riprendi, ActivePlan aggiornato (8 m3 -> 11 m3).
 /// </summary>
@@ -42,13 +42,12 @@ public class UC12_SelfServiceTests
         var shift = new Shift
         {
             Date = DateTime.Today,
-            IsAutonomous = true,
+            
             MissionId = "miss-self",
             Mission = new MissionData(["magazziniere-1"], [], [], "10:00-12:00"),
             Resources = new ShiftResources(["magazziniere-1"], [], [])
         };
 
-        Assert.True(shift.IsAutonomous);
         Assert.Empty(shift.Mission!.Vehicles);
         Assert.Empty(shift.Resources!.PresentVehicles);
     }
@@ -56,7 +55,7 @@ public class UC12_SelfServiceTests
     [Fact]
     public void Step3_ClientComes_ObjectsCensitedInShift()
     {
-        var shift = new Shift { IsAutonomous = true, Date = DateTime.Today };
+        var shift = new Shift {  Date = DateTime.Today };
         shift.Start();
         var entry = shift.AddServiceEntry("wo-self", "deal-1", "lead-1",
             ServiceEntryType.Ritiro, new ClientData("Cliente self", "333"));

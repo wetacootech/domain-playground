@@ -94,7 +94,7 @@ public class ScenarioEngine(PlaygroundState state)
                     Services = [new ServiceBooked
                     {
                         Type = ServiceBookedType.Ritiro,
-                        ServiceAddress = new Address("Via Roma 42", "Milano", "20121", _state.Areas[0].Id),
+                        ServiceAddress = new Address("20121", _state.Areas[0].Id),
                         ScheduledDate = DateTime.Today.AddDays(5),
                         ScheduledSlot = "09:00-12:00"
                     }],
@@ -151,7 +151,7 @@ public class ScenarioEngine(PlaygroundState state)
                     ServiceBookedId = svc.Id,
                     ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, false, _state.Areas[0].Id),
                     Commercial = new CommercialData(lead!.Id, questionnaire.Id, null),
-                    ServiceAddress = svc.ServiceAddress?.Street,
+                    ServiceAddress = svc.ServiceAddress?.ZipCode,
                     ContactName = "Anna Verdi",
                     EstimatedVolume = 10,
                     ScheduledDate = svc.ScheduledDate,
@@ -330,14 +330,14 @@ public class ScenarioEngine(PlaygroundState state)
                 svcRitiro = new ServiceBooked
                 {
                     Type = ServiceBookedType.Ritiro,
-                    ServiceAddress = new Address("Via Torino 5", "Milano", "20100", _state.Areas[0].Id),
+                    ServiceAddress = new Address("20100", _state.Areas[0].Id),
                     ScheduledDate = DateTime.Today.AddDays(7),
                     ScheduledSlot = "09:00-12:00"
                 };
                 svcConsegna = new ServiceBooked
                 {
                     Type = ServiceBookedType.Consegna,
-                    ServiceAddress = new Address("Corso Francia 10", "Torino", "10121", _state.Areas[2].Id),
+                    ServiceAddress = new Address("10121", _state.Areas[2].Id),
                     ScheduledDate = DateTime.Today.AddDays(7),
                     ScheduledSlot = "14:00-17:00"
                 };
@@ -597,7 +597,7 @@ public class ScenarioEngine(PlaygroundState state)
                 svcConsegna = new ServiceBooked
                 {
                     Type = ServiceBookedType.Consegna,
-                    ServiceAddress = new Address("Via Garibaldi 3", "Milano", "20122", _state.Areas[0].Id),
+                    ServiceAddress = new Address("20122", _state.Areas[0].Id),
                     SelectedObjectIds = selected.Select(o => o.Id).ToList(),
                     ScheduledDate = DateTime.Today.AddDays(3),
                     ScheduledSlot = "09:00-12:00"
@@ -629,7 +629,7 @@ public class ScenarioEngine(PlaygroundState state)
                     ServiceBookedId = svcConsegna!.Id,
                     ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, true, false, false, _state.Areas[0].Id),
                     Commercial = new CommercialData(lead!.Id, null, null),
-                    ServiceAddress = svcConsegna.ServiceAddress?.Street,
+                    ServiceAddress = svcConsegna.ServiceAddress?.ZipCode,
                     ContactName = "Giulia Romano",
                     EstimatedVolume = 2m,
                     ScheduledDate = svcConsegna.ScheduledDate,
@@ -778,7 +778,7 @@ public class ScenarioEngine(PlaygroundState state)
                 svc = new ServiceBooked
                 {
                     Type = ServiceBookedType.Ritiro,
-                    ServiceAddress = new Address("Via Uffici 1", "Milano", "20100", _state.Areas[0].Id),
+                    ServiceAddress = new Address("20100", _state.Areas[0].Id),
                     ScheduledDate = DateTime.Today.AddDays(10),
                     ScheduledSlot = "09:00-17:00",
                     Notes = "Ufficio 3 piani, ~200 oggetti"
@@ -819,7 +819,7 @@ public class ScenarioEngine(PlaygroundState state)
                     Type = WorkOrderType.Commercial,
                     ServiceBookedId = svc!.Id,
                     ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, false, _state.Areas[0].Id),
-                    ServiceAddress = svc.ServiceAddress?.Street,
+                    ServiceAddress = svc.ServiceAddress?.ZipCode,
                     ContactName = "Rag. Bianchi",
                     EstimatedVolume = 100m,
                     ScheduledDate = svc.ScheduledDate,
@@ -992,7 +992,7 @@ public class ScenarioEngine(PlaygroundState state)
                 svc = new ServiceBooked
                 {
                     Type = ServiceBookedType.Ritiro,
-                    ServiceAddress = new Address("Via Test 1", "Milano", "20100", _state.Areas[0].Id)
+                    ServiceAddress = new Address("20100", _state.Areas[0].Id)
                 };
                 quotation.Services.Add(svc);
                 quotation.Products.Add(new Product { Name = "Ritiro (18 m3 dichiarati)", Price = 400m });
@@ -1090,7 +1090,7 @@ public class ScenarioEngine(PlaygroundState state)
                     ServiceBookedId = svc.Id,
                     ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, false, _state.Areas[0].Id),
                     Commercial = new CommercialData(lead!.Id, questionnaire!.Id, inspection!.Id),
-                    ServiceAddress = svc.ServiceAddress?.Street,
+                    ServiceAddress = svc.ServiceAddress?.ZipCode,
                     ContactName = "Marco Neri",
                     EstimatedVolume = 28m
                 };
@@ -1141,7 +1141,7 @@ public class ScenarioEngine(PlaygroundState state)
                 svc = new ServiceBooked
                 {
                     Type = ServiceBookedType.Ritiro,
-                    ServiceAddress = new Address("Via Allagata 99", "Milano", "20100", _state.Areas[0].Id)
+                    ServiceAddress = new Address("20100", _state.Areas[0].Id)
                 };
                 quotation.Services.Add(svc);
                 quotation.Products.Add(new Product { Name = "Ritiro 75 oggetti", Price = 700m });
@@ -1331,7 +1331,7 @@ public class ScenarioEngine(PlaygroundState state)
                 lead.MarkConverted();
 
                 quotation = new Quotation { DealId = deal.Id, IsInitial = true };
-                svc = new ServiceBooked { Type = ServiceBookedType.Ritiro, ServiceAddress = new Address("Via Esterna 5", "Milano", "20100", _state.Areas[0].Id) };
+                svc = new ServiceBooked { Type = ServiceBookedType.Ritiro, ServiceAddress = new Address("20100", _state.Areas[0].Id) };
                 quotation.Services.Add(svc);
                 quotation.Products.Add(new Product { Name = "Ritiro + smontaggio armadio", Price = 350m });
                 deal.Quotations.Add(quotation);
@@ -1541,7 +1541,7 @@ public class ScenarioEngine(PlaygroundState state)
                 svcConsegna = new ServiceBooked
                 {
                     Type = ServiceBookedType.Consegna,
-                    ServiceAddress = new Address("Via Nuova 10", "Milano", "20100", _state.Areas[0].Id),
+                    ServiceAddress = new Address("20100", _state.Areas[0].Id),
                     SelectedObjectIds = _state.Objects.Where(o => o.DealId == deal.Id).Select(o => o.Id).ToList(),
                     ScheduledDate = DateTime.Today.AddDays(4)
                 };
@@ -1746,13 +1746,13 @@ public class ScenarioEngine(PlaygroundState state)
                 lead!.MarkConverted();
 
                 qMI = new Quotation { DealId = dealMI!.Id, IsInitial = true };
-                qMI.Services.Add(new ServiceBooked { Type = ServiceBookedType.Ritiro, ServiceAddress = new Address("Via MI 1", "Milano", "20100", _state.Areas[0].Id) });
+                qMI.Services.Add(new ServiceBooked { Type = ServiceBookedType.Ritiro, ServiceAddress = new Address("20100", _state.Areas[0].Id) });
                 qMI.DraftPlans.Add(new DraftPlan { MonthlyFee = 99m, EstimatedM3 = 20m, AreaId = _state.Areas[0].Id });
                 qMI.Products.Add(new Product { Name = "Deposito MI 20m3", Price = 99m });
                 dealMI.Quotations.Add(qMI);
 
                 qRM = new Quotation { DealId = dealRM!.Id, IsInitial = true };
-                qRM.Services.Add(new ServiceBooked { Type = ServiceBookedType.Ritiro, ServiceAddress = new Address("Via RM 1", "Roma", "00100", _state.Areas[1].Id) });
+                qRM.Services.Add(new ServiceBooked { Type = ServiceBookedType.Ritiro, ServiceAddress = new Address("00100", _state.Areas[1].Id) });
                 qRM.DraftPlans.Add(new DraftPlan { MonthlyFee = 79m, EstimatedM3 = 15m, AreaId = _state.Areas[1].Id });
                 qRM.Products.Add(new Product { Name = "Deposito RM 15m3", Price = 79m });
                 dealRM.Quotations.Add(qRM);
@@ -1815,7 +1815,7 @@ public class ScenarioEngine(PlaygroundState state)
 
             new("Step 5: Consegna totale - stessa destinazione Firenze", "Due Quotation di consegna (una per Deal) stessa destinazione Firenze, SelectedObjectIds distinti.", "Commercial", async () =>
             {
-                var addrFI = new Address("Via Firenze 1", "Firenze", "50100", null);
+                var addrFI = new Address("50100", null);
                 qConsMI = new Quotation { DealId = dealMI!.Id, IsInitial = false };
                 qConsMI.Services.Add(new ServiceBooked
                 {
@@ -1972,7 +1972,7 @@ public class ScenarioEngine(PlaygroundState state)
                 leadX.MarkConverted();
 
                 var qX = new Quotation { DealId = dealX.Id };
-                svcRitiroX = new ServiceBooked { Type = ServiceBookedType.Ritiro, ServiceAddress = new Address("Via X 1", "Milano", "20100", _state.Areas[0].Id) };
+                svcRitiroX = new ServiceBooked { Type = ServiceBookedType.Ritiro, ServiceAddress = new Address("20100", _state.Areas[0].Id) };
                 qX.Services.Add(svcRitiroX);
                 qX.Products.Add(new Product { Name = "Ritiro Cliente X", Price = 450m });
                 dealX.Quotations.Add(qX);
@@ -2183,7 +2183,7 @@ public class ScenarioEngine(PlaygroundState state)
                 svcConsegna = new ServiceBooked
                 {
                     Type = ServiceBookedType.Consegna,
-                    ServiceAddress = new Address("Via Verdi 10", "Milano", "20100", _state.Areas[0].Id),
+                    ServiceAddress = new Address("20100", _state.Areas[0].Id),
                     SelectedObjectIds = toDeliver.Select(o => o.Id).ToList()
                 };
                 qSD.Services.Add(svcSmalt);
@@ -2357,7 +2357,7 @@ public class ScenarioEngine(PlaygroundState state)
                 svc = new ServiceBooked
                 {
                     Type = ServiceBookedType.Ritiro,
-                    ServiceAddress = new Address("Magazzino Milano", "Milano", "20100", _state.Areas[0].Id),
+                    ServiceAddress = new Address("20100", _state.Areas[0].Id),
                     Notes = "Slot 8m3 venduto - self-service"
                 };
                 quotation.Services.Add(svc);
@@ -2412,7 +2412,7 @@ public class ScenarioEngine(PlaygroundState state)
                 {
                     MissionId = planning.Missions[0].Id,
                     Date = planning.Date,
-                    IsAutonomous = true,
+                    
                     Mission = new MissionData([_state.Operators[0].FullName], [], [], "10:00-12:00"),
                     Resources = new ShiftResources([_state.Operators[0].Id], [], [])
                 };
@@ -2560,7 +2560,7 @@ public class ScenarioEngine(PlaygroundState state)
                 lead.MarkConverted();
 
                 qRitiro = new Quotation { DealId = deal.Id, IsInitial = true };
-                svcRitiro = new ServiceBooked { Type = ServiceBookedType.Ritiro, ServiceAddress = new Address("Via Grande 100", "Milano", "20100", _state.Areas[0].Id) };
+                svcRitiro = new ServiceBooked { Type = ServiceBookedType.Ritiro, ServiceAddress = new Address("20100", _state.Areas[0].Id) };
                 qRitiro.Services.Add(svcRitiro);
                 qRitiro.Products.Add(new Product { Name = "Ritiro 200 oggetti", Price = 4000m });
                 deal.Quotations.Add(qRitiro);
@@ -2684,7 +2684,7 @@ public class ScenarioEngine(PlaygroundState state)
                 svcConsegna = new ServiceBooked
                 {
                     Type = ServiceBookedType.Consegna,
-                    ServiceAddress = new Address("Via Ritorno 1", "Milano", "20100", _state.Areas[0].Id),
+                    ServiceAddress = new Address("20100", _state.Areas[0].Id),
                     SelectedObjectIds = objectsRitirati.Select(o => o.Id).ToList(),
                     Notes = "Consegna totale post-cancellazione"
                 };

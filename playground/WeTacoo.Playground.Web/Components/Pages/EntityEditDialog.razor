@@ -32,6 +32,13 @@
                                 </tr>
                             }
                         }
+                        else if (prop.IsIdList)
+                        {
+                            <tr>
+                                <td style="font-family:monospace">@prop.Name</td>
+                                <td>@RenderIdListInput(prop)</td>
+                            </tr>
+                        }
                         else
                         {
                             <tr>
@@ -137,6 +144,39 @@
 
     private void SetEdit(string key, object? value) => _edits[key] = value;
 
+    private RenderFragment RenderIdListInput(EntityAdminService.EditableProperty prop) => __builder =>
+    {
+        var options = prop.IdListOptions ?? new();
+        var current = _edits.TryGetValue(prop.Name, out var e) && e is List<string> el
+            ? new HashSet<string>(el)
+            : new HashSet<string>((prop.CurrentValue as System.Collections.IEnumerable)?.Cast<string>() ?? Enumerable.Empty<string>());
+
+        if (options.Count == 0)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true">Nessuna opzione disponibile per @prop.Name.</MudAlert>
+            return;
+        }
+
+        <div class="d-flex flex-wrap gap-1">
+            @foreach (var (id, label) in options)
+            {
+                var isSel = current.Contains(id);
+                <MudChip T="string" Size="Size.Small"
+                         Color="@(isSel ? Color.Primary : Color.Default)"
+                         Variant="@(isSel ? Variant.Filled : Variant.Outlined)"
+                         OnClick="@(() => ToggleIdInList(prop.Name, id, current))">
+                    @label
+                </MudChip>
+            }
+        </div>
+    };
+
+    private void ToggleIdInList(string key, string id, HashSet<string> current)
+    {
+        if (current.Contains(id)) current.Remove(id); else current.Add(id);
+        _edits[key] = current.ToList();
+    }
+
     private string FriendlyType(Type t)
     {
         var u = Nullable.GetUnderlyingType(t);
@@ -167,7 +207,18 @@
 
         foreach (var (name, val) in topLevelEdits)
         {
-            try { Admin.ForceUpdate(Entity, name, val is string s ? s : val?.ToString()); }
+            try
+            {
+                // Pass list values through as-is; otherwise stringify for the reflection converter
+                object? toSend = val switch
+                {
+                    null => null,
+                    System.Collections.IEnumerable en when val is not string => en,
+                    string s => s,
+                    _ => val.ToString()
+                };
+                Admin.ForceUpdate(Entity, name, toSend);
+            }
             catch { }
         }
         foreach (var (voName, subs) in voGroups)

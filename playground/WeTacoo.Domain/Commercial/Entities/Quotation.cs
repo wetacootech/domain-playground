@@ -30,6 +30,8 @@ public class ServiceBooked : Entity
     public ServiceBooked() { Id = NextEntityId("svc"); }
     public ServiceBookedType Type { get; set; }
     public ServiceBookedStatus Status { get; private set; } = ServiceBookedStatus.ToAccept;
+    /// <summary>Modalita' self-service: cliente va al magazzino, no veicoli pianificati (vedi Q1bis DDD5).</summary>
+    public bool IsAutonomous { get; set; }
     public string? WorkOrderId { get; set; }          // riferimento diretto al WorkOrder in Operational
     public string? QuestionnaireId { get; set; }
     public string? InspectionId { get; set; } // riferimento al WO tipo inspection

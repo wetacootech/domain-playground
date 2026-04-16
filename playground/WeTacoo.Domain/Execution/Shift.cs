@@ -10,7 +10,6 @@ public class Shift : AggregateRoot
 {
     public Shift() { Id = NextId("shift"); }
     public string? MissionId { get; set; }
-    public bool IsAutonomous { get; set; }
     public DateTime Date { get; set; }
     /// <summary>
     /// States from DDD5 §10c (Operation): InProgress, Paused, Suspended, Completed

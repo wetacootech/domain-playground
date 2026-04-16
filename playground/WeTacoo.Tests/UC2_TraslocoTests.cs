@@ -36,14 +36,14 @@ public class UC2_TraslocoTests
         quotation.Services.Add(new ServiceBooked
         {
             Type = ServiceBookedType.Ritiro,
-            ServiceAddress = new Address("Via Torino 5", "Milano", "20100", "area-mi"),
+            ServiceAddress = new Address("20100", "area-mi"),
             ScheduledDate = DateTime.Today.AddDays(7),
             ScheduledSlot = "09:00-12:00"
         });
         quotation.Services.Add(new ServiceBooked
         {
             Type = ServiceBookedType.Consegna,
-            ServiceAddress = new Address("Corso Francia 10", "Torino", "10121", "area-to"),
+            ServiceAddress = new Address("10121", "area-to"),
             ScheduledDate = DateTime.Today.AddDays(7),
             ScheduledSlot = "14:00-17:00"
         });

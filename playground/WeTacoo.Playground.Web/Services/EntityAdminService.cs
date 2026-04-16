@@ -532,7 +532,9 @@ public class EntityAdminService
         bool IsComplex,
         bool IsIdRef,
         string? IdRefTargetType,
-        List<VoSubField>? VoSubFields);
+        List<VoSubField>? VoSubFields,
+        bool IsIdList = false,
+        List<(string Id, string Label)>? IdListOptions = null);
 
     private static readonly HashSet<Type> _simpleTypes =
     [
@@ -621,7 +623,41 @@ public class EntityAdminService
         bool isComplex = !isSimple && !isEnum;
         bool isIdRef = p.PropertyType == typeof(string) && p.Name.EndsWith("Id") && p.Name != "Id";
         string? target = isIdRef ? MapIdStem(p.Name[..^2], arNames) : null;
-        return new EditableProperty(p.Name, p.PropertyType, val, isEnum, isComplex, isIdRef, target, null);
+
+        // List<string> di id (es. Mission.VehicleResourceIds, OperatorIds) — con opzioni contestuali
+        bool isIdList = pt.IsGenericType && pt.GetGenericTypeDefinition() == typeof(List<>) && pt.GetGenericArguments()[0] == typeof(string);
+        List<(string, string)>? listOptions = null;
+        if (isIdList)
+        {
+            listOptions = GetIdListOptions(p.Name);
+        }
+
+        return new EditableProperty(p.Name, p.PropertyType, val, isEnum, isComplex, isIdRef, target, null, isIdList, listOptions);
+    }
+
+    private List<(string Id, string Label)> GetIdListOptions(string propertyName)
+    {
+        // Context-aware options per property naming convention
+        return propertyName switch
+        {
+            "VehicleResourceIds" => _state.Plannings.SelectMany(p => p.Resources)
+                .Where(r => r.ResourceType == "vehicle")
+                .Select(r =>
+                {
+                    var v = _state.Vehicles.FirstOrDefault(x => x.Id == r.SourceId);
+                    return (r.Id, v != null ? $"{v.Name} ({v.Plate})" : r.Id);
+                }).ToList(),
+            "AssetResourceIds" => _state.Plannings.SelectMany(p => p.Resources)
+                .Where(r => r.ResourceType == "asset")
+                .Select(r =>
+                {
+                    var a = _state.Assets.FirstOrDefault(x => x.Id == r.SourceId);
+                    return (r.Id, a != null ? a.Name : r.Id);
+                }).ToList(),
+            "OperatorIds" => _state.Operators.Select(o => (o.Id, o.FullName)).ToList(),
+            "AssignedWarehouseIds" => _state.Warehouses.Select(w => (w.Id, w.Name)).ToList(),
+            _ => new List<(string, string)>()
+        };
     }
 
     private HashSet<string> GetArTypeNames()
@@ -640,6 +676,7 @@ public class EntityAdminService
             "Client" => arNames.Contains("FinancialClient") ? "FinancialClient" : null,
             "FinancialClient" => arNames.Contains("FinancialClient") ? "FinancialClient" : null,
             "WorkOrder" => arNames.Contains("WorkOrder") ? "WorkOrder" : null,
+            "Team" => "PlanningTeam", // Entity nested in Planning
             _ => null
         };
     }
@@ -647,6 +684,15 @@ public class EntityAdminService
     /// <summary>Lista di istanze per popolare select dei cross-AR ref.</summary>
     public List<(string Id, string Label)> GetArInstancesForSelect(string arTypeName)
     {
+        // Special case: PlanningTeam è Entity nested, scan across all plannings
+        if (arTypeName == "PlanningTeam")
+        {
+            return _state.Plannings.SelectMany(p => p.Teams.Select(t => (t.Id,
+                Label: string.Join(" + ", t.OperatorIds.Take(3).Select(oid =>
+                    _state.Operators.FirstOrDefault(o => o.Id == oid)?.FullName ?? oid)))))
+                .ToList();
+        }
+
         var items = InstanceInspector.GetArCollections(_state)
             .FirstOrDefault(x => x.ArType.Name == arTypeName);
         if (items.Items == null) return new();
@@ -719,7 +765,17 @@ public class EntityAdminService
         if (p == null) throw new InvalidOperationException($"Proprietà {propertyName} non trovata su {t.Name}");
         var targetType = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
         object? converted = value;
-        if (value is string s && targetType != typeof(string))
+
+        // List<string> di ids (es. VehicleResourceIds)
+        if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(List<>) && targetType.GetGenericArguments()[0] == typeof(string))
+        {
+            var newList = new List<string>();
+            if (value is IEnumerable<string> ids) newList.AddRange(ids.Where(x => !string.IsNullOrWhiteSpace(x)));
+            else if (value is string csv && !string.IsNullOrWhiteSpace(csv))
+                newList.AddRange(csv.Split(',').Select(x => x.Trim()).Where(x => !string.IsNullOrEmpty(x)));
+            converted = newList;
+        }
+        else if (value is string s && targetType != typeof(string))
         {
             if (string.IsNullOrWhiteSpace(s) && Nullable.GetUnderlyingType(p.PropertyType) != null)
                 converted = null;
@@ -786,4 +842,169 @@ public class EntityAdminService
         var p = obj.GetType().GetProperty(name);
         return p?.GetValue(obj) as string;
     }
+
+    // ═══════════════════════════════════════════════════════════
+    // CREATE — nuove istanze con riferimenti (per Admin panel)
+    // ═══════════════════════════════════════════════════════════
+
+    /// <summary>Ritorna le dipendenze richieste per creare una nuova istanza del kind.</summary>
+    /// Ogni tuple e' (parameter name, AR target type per il picker).
+    public static List<(string Name, string Target)> GetCreateRequirements(string kind) => kind switch
+    {
+        "Deal" => new() { ("LeadId", "Lead") },
+        "Quotation" => new() { ("DealId", "Deal") },
+        "ServiceBooked" => new() { ("DealId", "Deal"), ("QuotationId", "Quotation") },
+        "Mission" => new() { ("PlanningId", "Planning") },
+        "PlanningTeam" => new() { ("PlanningId", "Planning") },
+        "Payment" => new() { ("DealId", "Deal") },
+        "Inspection" => new() { ("ServiceBookedId", "ServiceBooked") },
+        "MarketingClient" => new() { ("CommercialLeadId", "Lead") },
+        "HappinessClient" => new() { ("CommercialLeadId", "Lead") },
+        "FinancialClient" => new() { ("CommercialLeadId", "Lead") },
+        _ => new()
+    };
+
+    /// <summary>Crea un'istanza con default + riferimenti forniti.</summary>
+    public object? CreateNew(string kind, Dictionary<string, string> refs)
+    {
+        object? created = null;
+        switch (kind)
+        {
+            case "Lead":
+                var lead = new Lead { Personal = new WeTacoo.Domain.Commercial.ValueObjects.Personal("Nuovo", "Cliente", "nuovo@example.com", "") };
+                _state.Leads.Add(lead); created = lead; break;
+            case "Deal":
+                if (!refs.TryGetValue("LeadId", out var leadId)) return null;
+                var deal = new Deal { LeadId = leadId };
+                _state.Deals.Add(deal);
+                var l = _state.Leads.FirstOrDefault(x => x.Id == leadId); l?.AddDeal(deal.Id);
+                created = deal; break;
+            case "Quotation":
+                if (!refs.TryGetValue("DealId", out var qDealId)) return null;
+                var qDeal = _state.Deals.FirstOrDefault(d => d.Id == qDealId); if (qDeal == null) return null;
+                var q = new Quotation { DealId = qDealId, PaymentCondition = new WeTacoo.Domain.Commercial.ValueObjects.PaymentCondition(22m, 30) };
+                qDeal.Quotations.Add(q); created = q; break;
+            case "ServiceBooked":
+                if (!refs.TryGetValue("DealId", out var sDealId) || !refs.TryGetValue("QuotationId", out var sQuotId)) return null;
+                var sQuot = _state.Deals.FirstOrDefault(d => d.Id == sDealId)?.Quotations.FirstOrDefault(qq => qq.Id == sQuotId); if (sQuot == null) return null;
+                var svc = new ServiceBooked { Type = WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro };
+                sQuot.Services.Add(svc); created = svc; break;
+            case "Planning":
+                var pl = new WOp.Planning { Date = DateTime.Today.AddDays(1) };
+                _state.Plannings.Add(pl); created = pl; break;
+            case "Mission":
+                if (!refs.TryGetValue("PlanningId", out var mPlanId)) return null;
+                var mPlanning = _state.Plannings.FirstOrDefault(p => p.Id == mPlanId); if (mPlanning == null) return null;
+                var mission = new Mission();
+                mPlanning.Missions.Add(mission); created = mission; break;
+            case "PlanningTeam":
+                if (!refs.TryGetValue("PlanningId", out var tPlanId)) return null;
+                var tPlanning = _state.Plannings.FirstOrDefault(p => p.Id == tPlanId); if (tPlanning == null) return null;
+                var team = new PlanningTeam();
+                tPlanning.Teams.Add(team); created = team; break;
+            case "WorkOrder":
+                var wo = new WorkOrder {
+                    Type = WeTacoo.Domain.Operational.Enums.WorkOrderType.Operational,
+                    ServiceType = new WeTacoo.Domain.Operational.ValueObjects.ServiceTypeVO(
+                        WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Ritiro, false, false, false, null)
+                };
+                _state.WorkOrders.Add(wo); created = wo; break;
+            case "Shift":
+                var shift = new Shift { Date = DateTime.Today };
+                _state.Shifts.Add(shift); created = shift; break;
+            case "Inspection":
+                if (!refs.TryGetValue("ServiceBookedId", out var iSvcId)) return null;
+                var insp = new WOp.Inspection { ServiceBookedId = iSvcId, DataRichiesta = DateTime.Today };
+                _state.Inspections.Add(insp); created = insp; break;
+            case "Warehouse":
+                var wh = new Warehouse { Name = "Nuovo Magazzino" };
+                _state.Warehouses.Add(wh); created = wh; break;
+            case "Vehicle":
+                var v = new Vehicle { Name = "Nuovo Veicolo" };
+                _state.Vehicles.Add(v); created = v; break;
+            case "Asset":
+                var a = new Asset { Name = "Nuovo Asset" };
+                _state.Assets.Add(a); created = a; break;
+            case "Operator":
+                var op = new Operator { FirstName = "Nuovo", LastName = "Operatore" };
+                _state.Operators.Add(op); created = op; break;
+            case "Slot":
+                var sl = new Slot { Date = DateTime.Today, TimeStart = "09:00", TimeEnd = "12:00", MaxVolume = 50, MaxServices = 5 };
+                _state.Slots.Add(sl); created = sl; break;
+            case "Area":
+                var ar = new WeTacoo.Domain.SharedInfrastructure.Area { Name = "Nuova Area", City = "Milano" };
+                _state.Areas.Add(ar); created = ar; break;
+            case "ObjectTemplate":
+                var ot = new WeTacoo.Domain.SharedInfrastructure.ObjectTemplate { Name = "Nuovo Oggetto", DefaultVolume = 1m };
+                _state.ObjectTemplates.Add(ot); created = ot; break;
+            case "ProductTemplate":
+                var pt = new ProductTemplate { Name = "Nuovo Prodotto", BasePrice = 10m, ProductType = "oneoff" };
+                _state.ProductTemplates.Add(pt); created = pt; break;
+            case "QuestionTemplate":
+                var qt = new QuestionTemplate { Question = "Nuova domanda?", QuestionType = "text" };
+                _state.QuestionTemplates.Add(qt); created = qt; break;
+            case "Questionnaire":
+                var qn = new Questionnaire();
+                _state.Questionnaires.Add(qn); created = qn; break;
+            case "Coupon":
+                var cp = new Coupon { Code = "NEW", DiscountPercent = 10 };
+                _state.Coupons.Add(cp); created = cp; break;
+            case "Salesman":
+                var sm = new Salesman { FirstName = "Nuovo", LastName = "Sales" };
+                _state.Salesmen.Add(sm); created = sm; break;
+            case "User":
+                var u = new WeTacoo.Domain.Identity.User { Email = "new@example.com", Role = "Customer" };
+                _state.Users.Add(u); created = u; break;
+            case "Payment":
+                if (!refs.TryGetValue("DealId", out var payDealId)) return null;
+                var pay = new Payment { DealId = payDealId, PaymentType = "OneOff" };
+                _state.Payments.Add(pay); created = pay; break;
+            case "FinancialClient":
+                if (!refs.TryGetValue("CommercialLeadId", out var fcLeadId)) return null;
+                var fc = new FinancialClient { CommercialLeadId = fcLeadId };
+                _state.FinancialClients.Add(fc); created = fc; break;
+            case "MarketingClient":
+                if (!refs.TryGetValue("CommercialLeadId", out var mkLeadId)) return null;
+                var mk = new WeTacoo.Domain.Marketing.MarketingClient { CommercialLeadId = mkLeadId, FunnelStep = "LeadCreated" };
+                _state.MarketingClients.Add(mk); created = mk; break;
+            case "HappinessClient":
+                if (!refs.TryGetValue("CommercialLeadId", out var hxLeadId)) return null;
+                var hx = new WeTacoo.Domain.Happiness.HappinessClient { CommercialLeadId = hxLeadId };
+                _state.HappinessClients.Add(hx); created = hx; break;
+            case "PhysicalObject":
+                var po = new PhysicalObject { Name = "Nuovo Oggetto", Volume = 1m };
+                _state.Objects.Add(po); created = po; break;
+            case "Pallet":
+                var plt = new Pallet { Name = "Nuovo Pallet" };
+                _state.Pallets.Add(plt); created = plt; break;
+            case "ObjectGroup":
+                var og = new ObjectGroup { Name = "Nuovo Gruppo" };
+                _state.ObjectGroups.Add(og); created = og; break;
+            case "Label":
+                var lb = new Label { Code = "NEW-LABEL", City = "Milano" };
+                _state.Labels.Add(lb); created = lb; break;
+            case "VehicleOperation":
+                var vop = new VehicleOperation { Type = "check in", Status = "Pending" };
+                _state.VehicleOperations.Add(vop); created = vop; break;
+            case "WarehouseOperation":
+                var whop = new WarehouseOperation { OperationType = "IN", Status = "Pending" };
+                _state.WarehouseOperations.Add(whop); created = whop; break;
+            case "Email":
+                var em = new WeTacoo.Domain.SharedInfrastructure.Email { To = "new@example.com", Subject = "Nuova email", Body = "", Type = "notification", Status = "pending" };
+                _state.Emails.Add(em); created = em; break;
+        }
+        if (created != null) _state.NotifyStateChanged();
+        return created;
+    }
+
+    public bool CanCreate(string kind) => kind switch
+    {
+        "Lead" or "Deal" or "Quotation" or "ServiceBooked" or "Planning" or "Mission" or "PlanningTeam" or
+        "WorkOrder" or "Shift" or "Inspection" or "Warehouse" or "Vehicle" or "Asset" or "Operator" or
+        "Slot" or "Area" or "ObjectTemplate" or "ProductTemplate" or "QuestionTemplate" or "Questionnaire" or
+        "Coupon" or "Salesman" or "User" or "Payment" or "FinancialClient" or "MarketingClient" or
+        "HappinessClient" or "PhysicalObject" or "Pallet" or "ObjectGroup" or "Label" or
+        "VehicleOperation" or "WarehouseOperation" or "Email" => true,
+        _ => false
+    };
 }
