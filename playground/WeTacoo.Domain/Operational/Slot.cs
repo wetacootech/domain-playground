@@ -11,8 +11,6 @@ public class Slot : AggregateRoot
     public decimal UsedVolume { get; set; }
     public int MaxServices { get; set; }
     public int BookedServices { get; set; }
-    public string? TimeStart { get; set; }
-    public string? TimeEnd { get; set; }
 
     public bool CanBook(decimal volume) => UsedVolume + volume <= MaxVolume && BookedServices < MaxServices;
 

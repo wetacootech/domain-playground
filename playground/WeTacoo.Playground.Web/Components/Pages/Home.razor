@@ -293,7 +293,7 @@
                                             </div>
                                             <div class="quot-section-body">
                                                 @{
-                                                    var svcSlots = State.Slots.Where(s => s.CanBook(1)).OrderBy(s => s.Date).ThenBy(s => s.TimeStart).ToList();
+                                                    var svcSlots = State.Slots.Where(s => s.CanBook(1)).OrderBy(s => s.Date).ToList();
                                                 }
                                                 @foreach (var s in _quotationServices.ToList())
                                                 {
@@ -310,12 +310,12 @@
                                                         <div class="d-flex gap-2 align-center mt-1 flex-wrap">
                                                             @if (svcSlots.Count > 0)
                                                             {
-                                                                <MudSelect T="string" Value="@(svc.ScheduledDate != null ? State.Slots.FirstOrDefault(sl => sl.Date == svc.ScheduledDate && $"{sl.TimeStart}-{sl.TimeEnd}" == svc.ScheduledSlot)?.Id ?? "" : "")"
+                                                                <MudSelect T="string" Value="@(svc.ScheduledDate != null ? State.Slots.FirstOrDefault(sl => sl.Date == svc.ScheduledDate)?.Id ?? "" : "")"
                                                                            Label="Slot" Dense="true" Margin="Margin.Dense" Style="max-width:260px;"
-                                                                           ValueChanged="@(slotId => { var sl = State.Slots.FirstOrDefault(x => x.Id == slotId); if (sl != null) { svc.ScheduledDate = sl.Date; svc.ScheduledSlot = $"{sl.TimeStart}-{sl.TimeEnd}"; } else { svc.ScheduledDate = null; svc.ScheduledSlot = null; } StateHasChanged(); })">
+                                                                           ValueChanged="@(slotId => { var sl = State.Slots.FirstOrDefault(x => x.Id == slotId); if (sl != null) { svc.ScheduledDate = sl.Date; svc.ScheduledSlot = sl.Id; } else { svc.ScheduledDate = null; svc.ScheduledSlot = null; } StateHasChanged(); })">
                                                                     @foreach (var slot in svcSlots.Take(20))
                                                                     {
-                                                                        <MudSelectItem T="string" Value="@slot.Id">@slot.Date.ToString("dd/MM ddd") @slot.TimeStart-@slot.TimeEnd (@($"{slot.MaxVolume - slot.UsedVolume:F0}")m³)</MudSelectItem>
+                                                                        <MudSelectItem T="string" Value="@slot.Id">@slot.Date.ToString("dd/MM ddd") (@($"{slot.MaxVolume - slot.UsedVolume:F0}")m³)</MudSelectItem>
                                                                     }
                                                                 </MudSelect>
                                                             }
@@ -330,6 +330,42 @@
                                                                 <MudText Typo="Typo.caption">Self-service</MudText>
                                                             </MudSwitch>
                                                         </div>
+
+                                                        @* "Richiedi sopralluogo" non e' disponibile nella Quotation in costruzione (Draft).
+                                                           L'azione e' visibile solo dopo Confirm (stato InProgress in poi) — vedi DDD5 §4.8. *@
+
+                                                        @* ── MovingIds pairing (DDD5 §2.2e) ── *@
+                                                        @{
+                                                            WeTacoo.Domain.Commercial.Enums.ServiceBookedType? complType = svc.Type switch
+                                                            {
+                                                                WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro => WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Consegna,
+                                                                WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Consegna => WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro,
+                                                                _ => null
+                                                            };
+                                                            var complements = complType != null
+                                                                ? _quotationServices.Where(x => x.Type == complType).ToList()
+                                                                : new List<WeTacoo.Domain.Commercial.Entities.ServiceBooked>();
+                                                        }
+                                                        @if (complements.Count > 0)
+                                                        {
+                                                            <div class="d-flex gap-1 align-center mt-1 flex-wrap">
+                                                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                                    <MudIcon Icon="@Icons.Material.Filled.SyncAlt" Size="Size.Small" />
+                                                                    Appaia con (@(svc.Type == WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro ? "consegne alimentate" : "ritiri di provenienza")):
+                                                                </MudText>
+                                                                @foreach (var compl in complements)
+                                                                {
+                                                                    var complRef = compl;
+                                                                    var isPaired = svc.MovingIds.Contains(complRef.Id);
+                                                                    <MudChip T="string" Size="Size.Small"
+                                                                             Color="@(isPaired ? Color.Primary : Color.Default)"
+                                                                             Variant="@(isPaired ? Variant.Filled : Variant.Outlined)"
+                                                                             OnClick="@(() => TogglePairing(svc, complRef))">
+                                                                        @complRef.Type @(complRef.ServiceAddress?.ZipCode ?? complRef.Id.Substring(0, Math.Min(6, complRef.Id.Length)))
+                                                                    </MudChip>
+                                                                }
+                                                            </div>
+                                                        }
                                                     </MudPaper>
                                                 }
                                                 <div class="d-flex gap-2 align-center flex-wrap">
@@ -515,30 +551,9 @@
                                                             </div>
                                                         }
                                                         <div class="item-card-actions">
-                                                            @if (svc.InspectionId != null)
+                                                            @if (svc.MovingIds.Count > 0)
                                                             {
-                                                                var svcInsp = State.Inspections.FirstOrDefault(i => i.Id == svc.InspectionId);
-                                                                if (svcInsp != null && !svcInsp.IsCompleted && !svcInsp.IsCancelled)
-                                                                {
-                                                                    <MudChip T="string" Size="Size.Small" Color="Color.Info">Sopralluogo @svcInsp.Status</MudChip>
-                                                                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Success"
-                                                                               OnClick="@(() => CompleteInspectionForService(svc, svcInsp))">Completa sopralluogo</MudButton>
-                                                                }
-                                                                else if (svcInsp != null && svcInsp.IsCompleted)
-                                                                {
-                                                                    <MudTooltip Text="Sopralluogo effettuato — il questionario sara' auto-compilato alla finalizzazione della Quotation">
-                                                                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">Sopralluogo effettuato @(svcInsp.CompletedAt?.ToString("dd/MM"))</MudChip>
-                                                                    </MudTooltip>
-                                                                }
-                                                                else if (svcInsp != null && svcInsp.IsCancelled)
-                                                                {
-                                                                    <MudChip T="string" Size="Size.Small" Color="Color.Error">Sopralluogo annullato</MudChip>
-                                                                }
-                                                            }
-                                                            else if (!q.IsAccepted)
-                                                            {
-                                                                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Secondary"
-                                                                           OnClick="@(() => CreateInspectionForService(deal, svc))">Sopralluogo</MudButton>
+                                                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.SyncAlt">Trasloco (@svc.MovingIds.Count appaiato)</MudChip>
                                                             }
                                                             @if (q.IsAccepted && svc.Status is not WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.Completed and not WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.Cancelled)
                                                             {
@@ -554,7 +569,54 @@
                                                                     <MudButton Size="Size.Small" Color="Color.Info" Variant="Variant.Filled"
                                                                                OnClick="@(() => { if (svcWo != null) VerifyQuestionnaireAndReady(svcQuest, svc, svcWo); })">Questionario completato</MudButton>
                                                                 }
-                                                                @* chip "Programmabile" rimosso: lo stato programmabile vive sul WorkOrder (review 2026-04-16) *@
+                                                            }
+                                                            @* "Richiedi sopralluogo" (DDD5 §4.8, review 2026-04-17).
+                                                               Crea un WorkOrder Sopralluogo standalone (non un ServiceBooked) e porta il ServiceBooked in WaitingInspection.
+                                                               Visibile solo su Quotation gia' confermata (stato != Draft) e ServiceBooked in ToAccept.
+                                                               Il completamento NON avviene dalla Quotation: e' automatico alla chiusura dello Shift (Execution). *@
+                                                            @if (q.Status != WeTacoo.Domain.Commercial.Enums.QuotationStatus.Draft
+                                                                 && svc.Status == WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.ToAccept
+                                                                 && string.IsNullOrEmpty(svc.InspectionId))
+                                                            {
+                                                                @if (_inspectionDraftSvcId == svc.Id)
+                                                                {
+                                                                    var inspSlots = State.Slots
+                                                                        .Where(sl => sl.CanBook(1) && (svc.ServiceAddress?.AreaId == null || sl.AreaId == svc.ServiceAddress.AreaId))
+                                                                        .OrderBy(sl => sl.Date).ToList();
+                                                                    <div class="d-flex gap-1 align-center flex-wrap">
+                                                                        <MudSelect T="string" Value="_inspectionDraftSlotId" ValueChanged="@(v => _inspectionDraftSlotId = v)" Label="Slot sopralluogo" Dense="true" Margin="Margin.Dense" Style="max-width:260px">
+                                                                            @foreach (var slot in inspSlots.Take(20))
+                                                                            { <MudSelectItem T="string" Value="@slot.Id">@slot.Date.ToString("dd/MM ddd") (@($"{slot.MaxVolume - slot.UsedVolume:F0}")m³)</MudSelectItem> }
+                                                                        </MudSelect>
+                                                                        <MudButton Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled"
+                                                                                   OnClick="@(() => ConfirmRichiediSopralluogo(svc))">Conferma</MudButton>
+                                                                        <MudButton Size="Size.Small" Variant="Variant.Text"
+                                                                                   OnClick="@(() => { _inspectionDraftSvcId = null; _inspectionDraftSlotId = null; })">Annulla</MudButton>
+                                                                    </div>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <MudButton Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined"
+                                                                               StartIcon="@Icons.Material.Filled.Visibility"
+                                                                               OnClick="@(() => { _inspectionDraftSvcId = svc.Id; _inspectionDraftSlotId = null; })">Richiedi sopralluogo</MudButton>
+                                                                }
+                                                            }
+                                                            @if (svc.Status == WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.WaitingInspection && !string.IsNullOrEmpty(svc.InspectionId))
+                                                            {
+                                                                var insWo = State.WorkOrders.FirstOrDefault(w => w.Id == svc.InspectionId);
+                                                                var insLabel = insWo?.ScheduledDate != null
+                                                                    ? $"Sopralluogo {insWo.ScheduledDate:dd/MM} — WO {svc.InspectionId.Substring(0, Math.Min(6, svc.InspectionId.Length))}"
+                                                                    : $"Sopralluogo in corso — WO {svc.InspectionId.Substring(0, Math.Min(6, svc.InspectionId.Length))}";
+                                                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled" Icon="@Icons.Material.Filled.Visibility">
+                                                                    @insLabel
+                                                                </MudChip>
+                                                                <MudText Typo="Typo.caption" Class="ml-2">Conclusione automatica a chiusura Shift</MudText>
+                                                            }
+                                                            @if (!string.IsNullOrEmpty(svc.InspectionId) && svc.Status != WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.WaitingInspection)
+                                                            {
+                                                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.Visibility">
+                                                                    Sopralluogo WO @svc.InspectionId.Substring(0, Math.Min(6, svc.InspectionId.Length))
+                                                                </MudChip>
                                                             }
                                                         </div>
                                                     </MudPaper>
@@ -1647,20 +1709,99 @@
 
     private void AddTraslocoToNewQuotation()
     {
-        // Trasloco = Ritiro (origine) + Consegna (destinazione). CAP corrente come origine — l'utente
-        // puo' editare gli indirizzi delle singole entry dopo l'aggiunta.
-        _quotationServices.Add(new WeTacoo.Domain.Commercial.Entities.ServiceBooked
+        // Trasloco = Ritiro (origine) + Consegna (destinazione) pre-appaiati via MovingIds (DDD5 §2.2e).
+        var ritiro = new WeTacoo.Domain.Commercial.Entities.ServiceBooked
         {
             Type = WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro,
             ServiceAddress = new WeTacoo.Domain.Commercial.ValueObjects.Address(_newQuotSvcZip)
-        });
-        _quotationServices.Add(new WeTacoo.Domain.Commercial.Entities.ServiceBooked
+        };
+        var consegna = new WeTacoo.Domain.Commercial.Entities.ServiceBooked
         {
             Type = WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Consegna,
             ServiceAddress = new WeTacoo.Domain.Commercial.ValueObjects.Address(_newQuotSvcZip)
-        });
-        Snackbar.Add("Trasloco aggiunto: Ritiro + Consegna — edita gli indirizzi delle entry", Severity.Info);
+        };
+        ritiro.MovingIds.Add(consegna.Id);
+        consegna.MovingIds.Add(ritiro.Id);
+        _quotationServices.Add(ritiro);
+        _quotationServices.Add(consegna);
+        Snackbar.Add("Trasloco aggiunto: Ritiro ↔ Consegna appaiati (MovingIds)", Severity.Info);
         _newQuotSvcZip = "";
+    }
+
+    // ── Stato draft richiesta sopralluogo (DDD5 §4.8 review 2026-04-17) ──
+    private string? _inspectionDraftSvcId;
+    private string? _inspectionDraftSlotId;
+
+    /// Conferma la richiesta sopralluogo. La data arriva dallo Slot selezionato (stesso pattern degli altri ServiceBooked).
+    /// Crea: (1) Questionnaire template, (2) WorkOrder di Tipo Sopralluogo con QuestionnaireId.
+    /// Il ServiceBooked passa in WaitingInspection e porta InspectionId = WO.Id.
+    /// Il completamento NON e' manuale: avviene a fine Shift via OperationCompletedEvent (skip ToVerify).
+    private void ConfirmRichiediSopralluogo(WeTacoo.Domain.Commercial.Entities.ServiceBooked forService)
+    {
+        var slot = !string.IsNullOrEmpty(_inspectionDraftSlotId)
+            ? State.Slots.FirstOrDefault(s => s.Id == _inspectionDraftSlotId)
+            : null;
+        if (slot == null)
+        {
+            Snackbar.Add("Seleziona uno slot per il sopralluogo", Severity.Warning);
+            return;
+        }
+
+        var deal = State.Deals.FirstOrDefault(d => d.Quotations.Any(q => q.Services.Any(s => s.Id == forService.Id)));
+        var lead = deal != null ? State.Leads.FirstOrDefault(l => l.Id == deal.LeadId) : null;
+
+        var questionnaire = new WeTacoo.Domain.Commercial.Questionnaire { Origin = "Sopralluogo" };
+        questionnaire.Questions.Add(new WeTacoo.Domain.Commercial.Question { Data = new WeTacoo.Domain.Commercial.QuestionAnswer("Volume totale effettivo?", "number", null, "all") });
+        questionnaire.Questions.Add(new WeTacoo.Domain.Commercial.Question { Data = new WeTacoo.Domain.Commercial.QuestionAnswer("Accessibilita' del sito?", "string", null, "all") });
+        State.Questionnaires.Add(questionnaire);
+
+        var wo = new WeTacoo.Domain.Operational.WorkOrder
+        {
+            Type = WeTacoo.Domain.Operational.Enums.WorkOrderType.Sopralluogo,
+            ServiceBookedId = forService.Id,
+            ServiceType = new WeTacoo.Domain.Operational.ValueObjects.ServiceTypeVO(
+                WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Sopralluogo,
+                IsPartial: false, IsAutonomous: false, AreaId: deal?.AreaId),
+            Commercial = lead != null
+                ? new WeTacoo.Domain.Operational.ValueObjects.CommercialData(lead.Id, questionnaire.Id, $"Sopralluogo propedeutico al {forService.Type}", [], false)
+                : null,
+            ServiceAddress = forService.ServiceAddress?.ZipCode,
+            ContactName = lead != null ? $"{lead.Personal.FirstName} {lead.Personal.LastName}" : null,
+            ScheduledDate = slot.Date,
+            ScheduledSlot = slot.Id,
+            Notes = $"Sopralluogo propedeutico al {forService.Type} (ServiceBooked {forService.Id.Substring(0, Math.Min(6, forService.Id.Length))})"
+        };
+        State.WorkOrders.Add(wo);
+        slot.Book(1);
+
+        forService.RichiediSopralluogo(wo.Id, questionnaire.Id);
+
+        State.EventLog.Add(new WeTacoo.Domain.Events.SopralluogoRichiestoEvent(forService.Id, wo.Id, questionnaire.Id, forService.ServiceAddress?.ZipCode, $"Sopralluogo propedeutico al {forService.Type} — {slot.Date:dd/MM}"));
+        State.EventLog.Add(new WeTacoo.Domain.Events.WorkOrderCreatedEvent(wo.Id, "Sopralluogo", "Sopralluogo"));
+        wo.ServizioPronto("Commercial");
+        State.EventLog.Add(new WeTacoo.Domain.Events.WorkOrderStatusChangedEvent(wo.Id, "Completing", "ToSchedule", "Servizio pronto"));
+
+        Snackbar.Add($"Sopralluogo richiesto per {forService.Type} — WO {wo.Id.Substring(0, 6)} programmato il {slot.Date:dd/MM}", Severity.Info);
+
+        _inspectionDraftSvcId = null;
+        _inspectionDraftSlotId = null;
+        State.NotifyStateChanged();
+    }
+
+    /// Toggle pairing bidirezionale tra due ServiceBooked (Ritiro ↔ Consegna) nella stessa Quotation.
+    private void TogglePairing(WeTacoo.Domain.Commercial.Entities.ServiceBooked a, WeTacoo.Domain.Commercial.Entities.ServiceBooked b)
+    {
+        if (a.MovingIds.Contains(b.Id))
+        {
+            a.MovingIds.Remove(b.Id);
+            b.MovingIds.Remove(a.Id);
+        }
+        else
+        {
+            a.MovingIds.Add(b.Id);
+            b.MovingIds.Add(a.Id);
+        }
+        StateHasChanged();
     }
 
     private void AddProductToNewQuotation()
@@ -1826,10 +1967,25 @@
                     deal.CreatePlan(acceptedQuotation, acceptedQuotation.DraftPlans.First());
             }
 
-            // Se la Quotation contiene Ritiro + Consegna ed e' OneOff → Trasloco (flag su ServiceType)
-            bool isTrasloco = deal.Type == WeTacoo.Domain.Commercial.Enums.DealType.OneOff
-                              && acceptedQuotation.Services.Any(s => s.Type == WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro)
-                              && acceptedQuotation.Services.Any(s => s.Type == WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Consegna);
+            // Trasloco pairing via MovingIds (DDD5 §2.2e, review 2026-04-16):
+            // se OneOff con Ritiro + Consegna appaiamo tutti i Ritiri con tutte le Consegne della stessa Quotation.
+            if (deal.Type == WeTacoo.Domain.Commercial.Enums.DealType.OneOff)
+            {
+                var ritiri = acceptedQuotation.Services.Where(s => s.Type == WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro).ToList();
+                var consegne = acceptedQuotation.Services.Where(s => s.Type == WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Consegna).ToList();
+                if (ritiri.Count > 0 && consegne.Count > 0)
+                {
+                    foreach (var r in ritiri)
+                        foreach (var c in consegne)
+                        {
+                            if (!r.MovingIds.Contains(c.Id)) r.MovingIds.Add(c.Id);
+                            if (!c.MovingIds.Contains(r.Id)) c.MovingIds.Add(r.Id);
+                        }
+                }
+            }
+
+            // HasPlan snapshot per il WO (review 2026-04-16)
+            bool hasPlan = deal.ActivePlan != null || acceptedQuotation.DraftPlans.Count > 0;
 
             // 3. Emit QuotationAcceptedEvent (always, even for additional quotations)
             State.PublishEvent(new WeTacoo.Domain.Events.QuotationAcceptedEvent(
@@ -1842,28 +1998,21 @@
                 // ServiceBooked: DaAccettare -> DaCompletare
                 svc.AccettaServizio();
 
-                // Se sopralluogo gia' completato, questionario auto-compilato
-                var completedInspection = svc.InspectionId != null
-                    ? State.Inspections.FirstOrDefault(i => i.Id == svc.InspectionId && i.IsCompleted)
-                    : null;
-
                 // Create Questionnaire for the service (uses QuestionTemplates from seed)
-                var questionnaire = new WeTacoo.Domain.Commercial.Questionnaire { Origin = completedInspection != null ? "Inspection" : "Quotation" };
+                var questionnaire = new WeTacoo.Domain.Commercial.Questionnaire { Origin = "Quotation" };
                 foreach (var qt in State.QuestionTemplates.Where(q => q.IsActive))
                 {
                     questionnaire.Questions.Add(new WeTacoo.Domain.Commercial.Question
                     {
                         QuestionTemplateId = qt.Id,
-                        Data = new WeTacoo.Domain.Commercial.QuestionAnswer(qt.Question, qt.QuestionType,
-                            completedInspection != null ? "Compilato durante sopralluogo" : null,
-                            qt.Visibility)
+                        Data = new WeTacoo.Domain.Commercial.QuestionAnswer(qt.Question, qt.QuestionType, null, qt.Visibility)
                     });
                 }
                 State.Questionnaires.Add(questionnaire);
                 svc.QuestionnaireId = questionnaire.Id;
 
-                // Auto-verifica: nessuna domanda attiva OPPURE sopralluogo gia' completato (dati raccolti sul campo)
-                bool autoReady = !State.QuestionTemplates.Any(q => q.IsActive) || completedInspection != null;
+                // Auto-verifica: nessuna domanda attiva
+                bool autoReady = !State.QuestionTemplates.Any(q => q.IsActive);
                 if (autoReady)
                 {
                     questionnaire.IsVerified = true;
@@ -1885,14 +2034,13 @@
                         },
                         IsPartial: false,
                         IsAutonomous: svc.IsAutonomous,
-                        IsTrasloco: isTrasloco && (svc.Type is WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro or WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Consegna),
                         AreaId: deal.AreaId),
                     ServiceAddress = svc.ServiceAddress?.ZipCode,
                     ContactName = $"{lead.Personal.FirstName} {lead.Personal.LastName}",
                     EstimatedVolume = deal.ActivePlan?.CurrentM3 ?? 0,
                     ScheduledDate = svc.ScheduledDate,
                     ScheduledSlot = svc.ScheduledSlot,
-                    Commercial = new WeTacoo.Domain.Operational.ValueObjects.CommercialData(lead.Id, questionnaire.Id, null),
+                    Commercial = new WeTacoo.Domain.Operational.ValueObjects.CommercialData(lead.Id, questionnaire.Id, null, [.. svc.MovingIds], hasPlan),
                 };
                 State.WorkOrders.Add(wo);
                 svc.WorkOrderId = wo.Id;
@@ -2055,7 +2203,7 @@
                     if (lead != null)
                         clientData = new WeTacoo.Domain.Execution.Entities.ClientData($"{lead.Personal.FirstName} {lead.Personal.LastName}", lead.Personal.Phone ?? "");
                 }
-                shift.AddServiceEntry(wo.Id, dealId, leadId, MapServiceEntryType(wo.ServiceType), clientData);
+                shift.AddServiceEntry(wo.Id, dealId, leadId, MapServiceEntryType(wo), clientData);
 
                 if (wo.Status == WeTacoo.Domain.Operational.Enums.WorkOrderStatus.ToSchedule)
                 {
@@ -2083,14 +2231,28 @@
         State.NotifyStateChanged();
     }
 
-    private static WeTacoo.Domain.Execution.Enums.ServiceEntryType MapServiceEntryType(WeTacoo.Domain.Operational.ValueObjects.ServiceTypeVO svcType) => svcType.Type switch
+    /// <summary>
+    /// Deriva il tipo di ServiceEntry dal WorkOrder (DDD5 §2.1, review 2026-04-16).
+    /// La logica combina ServiceType, MovingIds (pairing trasloco) e HasPlan (piano ricorrente).
+    /// </summary>
+    private static WeTacoo.Domain.Execution.Enums.ServiceEntryType MapServiceEntryType(WeTacoo.Domain.Operational.WorkOrder wo)
     {
-        WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Ritiro => svcType.IsTrasloco ? WeTacoo.Domain.Execution.Enums.ServiceEntryType.TraslocoRitiro : WeTacoo.Domain.Execution.Enums.ServiceEntryType.Ritiro,
-        WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Consegna => svcType.IsTrasloco ? WeTacoo.Domain.Execution.Enums.ServiceEntryType.TraslocoConsegna : WeTacoo.Domain.Execution.Enums.ServiceEntryType.Consegna,
-        WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Smaltimento => WeTacoo.Domain.Execution.Enums.ServiceEntryType.Smaltimento,
-        WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Sopralluogo => WeTacoo.Domain.Execution.Enums.ServiceEntryType.Sopralluogo,
-        _ => WeTacoo.Domain.Execution.Enums.ServiceEntryType.Ritiro
-    };
+        var svcType = wo.ServiceType;
+        bool isTrasloco = wo.Commercial?.MovingIds.Count > 0;
+        bool hasPlan = wo.Commercial?.HasPlan ?? false;
+        return svcType.Type switch
+        {
+            WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Ritiro => isTrasloco
+                ? (hasPlan ? WeTacoo.Domain.Execution.Enums.ServiceEntryType.RitiroTraslocoDeposito : WeTacoo.Domain.Execution.Enums.ServiceEntryType.TraslocoRitiro)
+                : WeTacoo.Domain.Execution.Enums.ServiceEntryType.Ritiro,
+            WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Consegna => isTrasloco
+                ? (hasPlan ? WeTacoo.Domain.Execution.Enums.ServiceEntryType.ConsegnaTraslocoDeposito : WeTacoo.Domain.Execution.Enums.ServiceEntryType.TraslocoConsegna)
+                : WeTacoo.Domain.Execution.Enums.ServiceEntryType.Consegna,
+            WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Smaltimento => WeTacoo.Domain.Execution.Enums.ServiceEntryType.Smaltimento,
+            WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Sopralluogo => WeTacoo.Domain.Execution.Enums.ServiceEntryType.Sopralluogo,
+            _ => WeTacoo.Domain.Execution.Enums.ServiceEntryType.Ritiro
+        };
+    }
 
     // ══════════════════════════════════════════════════════════════
     // SHIFT ACTIONS
@@ -2122,7 +2284,8 @@
             // DDD5 review 2026-04-14: SE senza Start; l'in-progress vive sullo Shift InCorso
 
             bool isRitiro = se.Type is WeTacoo.Domain.Execution.Enums.ServiceEntryType.Ritiro
-                            or WeTacoo.Domain.Execution.Enums.ServiceEntryType.TraslocoRitiro;
+                            or WeTacoo.Domain.Execution.Enums.ServiceEntryType.TraslocoRitiro
+                            or WeTacoo.Domain.Execution.Enums.ServiceEntryType.RitiroTraslocoDeposito;
 
             if (isRitiro)
             {
@@ -2197,7 +2360,7 @@
         var wo = new WeTacoo.Domain.Operational.WorkOrder
         {
             Type = WeTacoo.Domain.Operational.Enums.WorkOrderType.Operational,
-            ServiceType = new WeTacoo.Domain.Operational.ValueObjects.ServiceTypeVO(_opsWoServiceType, false, false, false, _opsWoAreaId),
+            ServiceType = new WeTacoo.Domain.Operational.ValueObjects.ServiceTypeVO(_opsWoServiceType, false, false, _opsWoAreaId),
             ServiceAddress = _opsWoAddress,
             EstimatedVolume = _opsWoVolume,
             Operational = new WeTacoo.Domain.Operational.ValueObjects.OperationalDataVO(null, _opsWoServiceType.ToString(), _opsWoAddress)
@@ -2249,6 +2412,7 @@
             {
                 case WeTacoo.Domain.Execution.Enums.ServiceEntryType.Ritiro:
                 case WeTacoo.Domain.Execution.Enums.ServiceEntryType.TraslocoRitiro:
+                case WeTacoo.Domain.Execution.Enums.ServiceEntryType.RitiroTraslocoDeposito:
                     // Oggetti censiti nei Task di questa entry
                     var censiti = shift.Tasks.Where(t => t.ServiceEntryId == se.Id).SelectMany(t => t.ObjectIds).Distinct().ToList();
                     ritiroObjectIds.AddRange(censiti);
@@ -2256,6 +2420,8 @@
 
                 case WeTacoo.Domain.Execution.Enums.ServiceEntryType.Consegna:
                 case WeTacoo.Domain.Execution.Enums.ServiceEntryType.TraslocoConsegna:
+                case WeTacoo.Domain.Execution.Enums.ServiceEntryType.ConsegnaTrasloco:
+                case WeTacoo.Domain.Execution.Enums.ServiceEntryType.ConsegnaTraslocoDeposito:
                     // Oggetti selezionati nella Quotation → Delivered
                     var svcConsegna = FindServiceBookedForWoId(se.ServiceId);
                     if (svcConsegna != null)
@@ -2491,53 +2657,10 @@
         State.NotifyStateChanged();
     }
 
-    // ══════════════════════════════════════════════════════════════
-    // COMPLETE INSPECTION (SOPRALLUOGO)
-    // ══════════════════════════════════════════════════════════════
-    private void CompleteInspectionForService(WeTacoo.Domain.Commercial.Entities.ServiceBooked svc, WeTacoo.Domain.Operational.Inspection inspection)
-    {
-        if (inspection.IsCompleted || inspection.IsCancelled) return;
-        inspection.Complete("Operatore");
-        // ServiceBooked: InAttesaSopralluogo -> DaAccettare
-        svc.SopralluogoCompletato();
-        State.PublishEvent(new WeTacoo.Domain.Events.InspectionCompletataEvent(inspection.Id, svc.Id, svc.QuestionnaireId));
-        Snackbar.Add($"Sopralluogo completato per servizio {svc.Type} — Sales puo' rifinire la Quotation", Severity.Success);
-        State.NotifyStateChanged();
-    }
-
-    // ══════════════════════════════════════════════════════════════
-    // CREATE INSPECTION (SOPRALLUOGO) — per singolo ServiceBooked
-    // ══════════════════════════════════════════════════════════════
-    private void CreateInspectionForService(WeTacoo.Domain.Commercial.Deal deal, WeTacoo.Domain.Commercial.Entities.ServiceBooked svc)
-    {
-        try
-        {
-            var lead = State.Leads.FirstOrDefault(l => l.Id == deal.LeadId);
-            if (lead == null) return;
-
-            // ServiceBooked: DaAccettare -> InAttesaSopralluogo
-            svc.RichiediSopralluogo();
-
-            // Create Inspection AR (non WorkOrder — DDD5 §4.8)
-            var inspection = new WeTacoo.Domain.Operational.Inspection
-            {
-                ServiceBookedId = svc.Id,
-                QuestionnaireId = svc.QuestionnaireId,
-                Caratteristiche = $"Sopralluogo per {svc.Type} a {svc.ServiceAddress?.ZipCode}",
-                DataRichiesta = DateTime.UtcNow,
-            };
-            svc.InspectionId = inspection.Id;
-            State.Inspections.Add(inspection);
-
-            State.PublishEvent(new WeTacoo.Domain.Events.SopralluogoRichiestoEvent(svc.Id, svc.QuestionnaireId, svc.ServiceAddress?.ZipCode));
-            Snackbar.Add($"Sopralluogo richiesto per servizio {svc.Type} — Inspection creata", Severity.Success);
-            State.NotifyStateChanged();
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
-        }
-    }
+    // Sopralluogo e' ora un normale ServiceBooked/WorkOrder (DDD5 §4.8 review 2026-04-16).
+    // I metodi CompleteInspectionForService / CreateInspectionForService sono stati rimossi:
+    // per richiedere un sopralluogo si aggiunge un ServiceBooked di Type=Sopralluogo alla Quotation
+    // e lo si processa con il flusso standard (AccettaServizio -> SegnaComePronto -> WorkOrder Sopralluogo).
 
     // ══════════════════════════════════════════════════════════════
     // CREATE TRASBORDO
@@ -2555,9 +2678,9 @@
             {
                 Type = WeTacoo.Domain.Operational.Enums.WorkOrderType.Operational,
                 ServiceType = new WeTacoo.Domain.Operational.ValueObjects.ServiceTypeVO(
-                    WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Trasbordo, false, false, false, null),
+                    WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Trasbordo, false, false, null),
                 ContactName = $"{lead.Personal.FirstName} {lead.Personal.LastName}",
-                Commercial = new WeTacoo.Domain.Operational.ValueObjects.CommercialData(lead.Id, null, null),
+                Commercial = new WeTacoo.Domain.Operational.ValueObjects.CommercialData(lead.Id, null, null, [], false),
             };
             State.WorkOrders.Add(wo);
 
@@ -2798,17 +2921,7 @@
                                 clientData = new WeTacoo.Domain.Execution.Entities.ClientData(
                                     $"{lead.Personal.FirstName} {lead.Personal.LastName}", lead.Personal.Phone ?? "");
                         }
-                        var entryType = wo.ServiceType.Type switch
-                        {
-                            WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Ritiro => wo.ServiceType.IsTrasloco
-                                ? WeTacoo.Domain.Execution.Enums.ServiceEntryType.TraslocoRitiro
-                                : WeTacoo.Domain.Execution.Enums.ServiceEntryType.Ritiro,
-                            WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Consegna => wo.ServiceType.IsTrasloco
-                                ? WeTacoo.Domain.Execution.Enums.ServiceEntryType.TraslocoConsegna
-                                : WeTacoo.Domain.Execution.Enums.ServiceEntryType.Consegna,
-                            WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Smaltimento => WeTacoo.Domain.Execution.Enums.ServiceEntryType.Smaltimento,
-                            _ => WeTacoo.Domain.Execution.Enums.ServiceEntryType.Ritiro
-                        };
+                        var entryType = MapServiceEntryType(wo);
                         existingShift.AddServiceEntry(wo.Id, dealId, leadId, entryType, clientData);
                     }
 
@@ -3071,7 +3184,6 @@
         WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.Cancelled => Color.Error,
         WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.Ready => Color.Info,
         WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.ToComplete => Color.Warning,
-        WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.PendingInspection => Color.Secondary,
         WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.ToAccept => Color.Default,
         _ => Color.Default
     };
@@ -3136,8 +3248,6 @@
         WeTacoo.Domain.Events.ServizioProntoEvent => "Servizio pronto per Operational",
         WeTacoo.Domain.Events.ServizioCompletatoEvent => "Servizio completato — cascade cross-BC",
         WeTacoo.Domain.Events.RichiedeInterventoEvent e => $"Intervento richiesto: {e.Motivo}",
-        WeTacoo.Domain.Events.SopralluogoRichiestoEvent => "Sopralluogo richiesto",
-        WeTacoo.Domain.Events.InspectionCompletataEvent => "Sopralluogo completato",
         WeTacoo.Domain.Events.ShiftCreatedEvent => "Intervento creato per il team operativo",
         WeTacoo.Domain.Events.ServiceExecutedEvent e => $"Servizio eseguito dal team — esito: {e.Outcome}",
         WeTacoo.Domain.Events.OperationStartedEvent => "Operazione avviata sul campo",

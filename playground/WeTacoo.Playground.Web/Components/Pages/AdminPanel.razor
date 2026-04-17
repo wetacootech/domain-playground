@@ -46,7 +46,6 @@
     <MudTabPanel Text="Operational">
         <MudExpansionPanels MultiExpansion="true">
             @Section("WorkOrders", State.WorkOrders.Cast<object>().ToList(), "WorkOrder", o => new[] { ((WorkOrder)o).Id }, o => { var x = (WorkOrder)o; return $"{x.Type} — {x.ServiceType?.Type} — {x.Status}"; })
-            @Section("Inspections", State.Inspections.Cast<object>().ToList(), "Inspection", o => new[] { ((Inspection)o).Id }, o => { var x = (Inspection)o; return $"{x.Status} — svc {x.ServiceBookedId}"; })
             @Section("Plannings", State.Plannings.Cast<object>().ToList(), "Planning", o => new[] { ((Planning)o).Id }, o => { var x = (Planning)o; return $"{x.Date:dd/MM} — {x.Missions.Count} mission, {x.Teams.Count} team"; })
             @NestedSection("Missions", State.Plannings.SelectMany(p => p.Missions.Select(m => (object)new object[] { p, m })).ToList(), "Mission",
                 o => { var a = (object[])o; return new[] { ((Planning)a[0]).Id, ((Mission)a[1]).Id }; },
@@ -58,7 +57,7 @@
                 o => { var a = (object[])o; return ((PlanningTeam)a[1]).Id; },
                 o => { var a = (object[])o; var t = (PlanningTeam)a[1]; return $"{t.OperatorIds.Count} operatori — planning {((Planning)a[0]).Id}"; },
                 o => ((object[])o)[1])
-            @Section("Slots", State.Slots.Cast<object>().ToList(), "Slot", o => new[] { ((Slot)o).Id }, o => { var x = (Slot)o; return $"{x.Date:dd/MM} {x.TimeStart}-{x.TimeEnd} — wh {x.WarehouseId}"; })
+            @Section("Slots", State.Slots.Cast<object>().ToList(), "Slot", o => new[] { ((Slot)o).Id }, o => { var x = (Slot)o; return $"{x.Date:dd/MM} — wh {x.WarehouseId}"; })
             @Section("Warehouses", State.Warehouses.Cast<object>().ToList(), "Warehouse", o => new[] { ((Warehouse)o).Id }, o => { var x = (Warehouse)o; return $"{x.Name} — cap {x.Capacity}"; })
             @Section("Vehicles", State.Vehicles.Cast<object>().ToList(), "Vehicle", o => new[] { ((Vehicle)o).Id }, o => { var x = (Vehicle)o; return $"{x.Name} — {x.Plate}"; })
             @Section("Assets", State.Assets.Cast<object>().ToList(), "Asset", o => new[] { ((Asset)o).Id }, o => { var x = (Asset)o; return $"{x.Name} — {x.AssetType} — {x.Status}"; })

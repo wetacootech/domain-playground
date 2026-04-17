@@ -127,8 +127,8 @@ public class UC11_SmaltimentoTests
     [Fact]
     public void Step7_TwoWorkOrders_BothCompleteIndependently()
     {
-        var woSmalt = new WorkOrder { ServiceType = new ServiceTypeVO(ServiceTypeEnum.Smaltimento, false, false, false, "area-mi") };
-        var woCons = new WorkOrder { ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, false, "area-mi") };
+        var woSmalt = new WorkOrder { ServiceType = new ServiceTypeVO(ServiceTypeEnum.Smaltimento, false, false, "area-mi") };
+        var woCons = new WorkOrder { ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, "area-mi") };
 
         foreach (var wo in new[] { woSmalt, woCons })
         {

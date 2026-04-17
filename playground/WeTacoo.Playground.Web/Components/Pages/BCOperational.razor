@@ -6,7 +6,7 @@
 <PageTitle>Operational BC</PageTitle>
 <MudText Typo="Typo.h4" Class="mb-2 bc-page-title" Style="border-left:6px solid #e65100;padding-left:12px;">Operational BC</MudText>
 <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
-    Pagina ispettiva fedele al dominio DDD5. <b>AR (Aggregate Root):</b> Planning, WorkOrder, Inspection, Slot, Warehouse, Vehicle, Operator.
+    Pagina ispettiva fedele al dominio DDD5. <b>AR (Aggregate Root):</b> Planning, WorkOrder, Slot, Warehouse, Vehicle, Operator.
     <b>Entity dentro Planning:</b> Resource, PlanningTeam, Mission. Resources NON sono indipendenti — vivono dentro Planning.
 </MudAlert>
 
@@ -24,7 +24,7 @@
                 <RowTemplate>
                     <MudTd>@context.Id</MudTd>
                     <MudTd><MudChip T="string" Size="Size.Small">@context.Type</MudChip></MudTd>
-                    <MudTd>@context.ServiceType.Type @(context.ServiceType.IsPartial ? "(Parziale)" : "") @(context.ServiceType.IsTrasloco ? "(Trasloco)" : "")</MudTd>
+                    <MudTd>@context.ServiceType.Type @(context.ServiceType.IsPartial ? "(Parziale)" : "") @((context.Commercial?.MovingIds.Count ?? 0) > 0 ? "(Trasloco)" : "")</MudTd>
                     <MudTd><MudChip T="string" Size="Size.Small" Color="@WOStatusColor(context.Status)">@context.Status</MudChip></MudTd>
                     <MudTd>@(context.ScheduledDate?.ToString("dd/MM") ?? "—")</MudTd>
                     <MudTd>@context.ServiceAddress</MudTd>
@@ -36,29 +36,7 @@
         }
     </MudTabPanel>
 
-    @* ══════════════ Inspections (AR) ══════════════ *@
-    <MudTabPanel Text="@($"Inspections ({State.Inspections.Count})")">
-        @if (State.Inspections.Count == 0) { <MudAlert Severity="Severity.Info">Nessuna Inspection (sopralluogo).</MudAlert> }
-        else
-        {
-            <MudTable Items="State.Inspections" Dense="true" Hover="true" Striped="true">
-                <HeaderContent>
-                    <MudTh>ID</MudTh><MudTh>Stato</MudTh><MudTh>ServiceBooked</MudTh><MudTh>Questionnaire</MudTh><MudTh>Caratteristiche</MudTh><MudTh>Data richiesta</MudTh><MudTh>Documenti</MudTh><MudTh>Completata</MudTh><MudTh>Azioni</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd>@context.Id</MudTd>
-                    <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.IsCompleted ? Color.Success : context.IsCancelled ? Color.Error : Color.Info)">@context.Status</MudChip></MudTd>
-                    <MudTd>@(context.ServiceBookedId ?? "—")</MudTd>
-                    <MudTd>@(context.QuestionnaireId ?? "—")</MudTd>
-                    <MudTd>@(context.Caratteristiche ?? "—")</MudTd>
-                    <MudTd>@(context.DataRichiesta?.ToString("dd/MM/yyyy HH:mm") ?? "—")</MudTd>
-                    <MudTd>@context.Documenti.Count docs</MudTd>
-                    <MudTd>@(context.IsCompleted ? $"{context.CompletedBy} @ {context.CompletedAt?.ToString("dd/MM HH:mm")}" : "—")</MudTd>
-                    <MudTd><EntityActions Kind="Inspection" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
-                </RowTemplate>
-            </MudTable>
-        }
-    </MudTabPanel>
+    @* Inspection AR rimosso (DDD5 §4.8 review 2026-04-16): Sopralluogo e' ora un WorkOrder di tipo Sopralluogo. *@
 
     @* ══════════════ Plannings (AR) → Resources/Teams/Missions (Entity dentro AR) ══════════════ *@
     <MudTabPanel Text="@($"Plannings ({State.Plannings.Count})")">
@@ -174,13 +152,12 @@
         else
         {
             <MudTable Items="State.Slots" Dense="true" Hover="true">
-                <HeaderContent><MudTh>ID</MudTh><MudTh>Date</MudTh><MudTh>Area</MudTh><MudTh>Warehouse</MudTh><MudTh>Volume</MudTh><MudTh>Services</MudTh><MudTh>Time</MudTh><MudTh>Azioni</MudTh></HeaderContent>
+                <HeaderContent><MudTh>ID</MudTh><MudTh>Date</MudTh><MudTh>Area</MudTh><MudTh>Warehouse</MudTh><MudTh>Volume</MudTh><MudTh>Services</MudTh><MudTh>Azioni</MudTh></HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.Id</MudTd>
                     <MudTd>@context.Date.ToString("dd/MM/yyyy")</MudTd><MudTd>@context.AreaId</MudTd><MudTd>@context.WarehouseId</MudTd>
                     <MudTd>@($"{context.UsedVolume}/{context.MaxVolume} m3")</MudTd>
                     <MudTd>@($"{context.BookedServices}/{context.MaxServices}")</MudTd>
-                    <MudTd>@context.TimeStart - @context.TimeEnd</MudTd>
                     <MudTd><EntityActions Kind="Slot" Ids="@(new[] { context.Id })" Entity="context" OnChanged="StateHasChanged" /></MudTd>
                 </RowTemplate>
             </MudTable>

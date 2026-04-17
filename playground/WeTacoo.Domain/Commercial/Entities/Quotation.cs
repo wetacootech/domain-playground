@@ -32,9 +32,24 @@ public class ServiceBooked : Entity
     public ServiceBookedStatus Status { get; private set; } = ServiceBookedStatus.ToAccept;
     /// <summary>Modalita' self-service: cliente va al magazzino, no veicoli pianificati (vedi Q1bis DDD5).</summary>
     public bool IsAutonomous { get; set; }
-    public string? WorkOrderId { get; set; }          // riferimento diretto al WorkOrder in Operational
+    public string? WorkOrderId { get; set; }          // riferimento diretto al WorkOrder commerciale in Operational
+    /// <summary>
+    /// DDD5 §2.2 / §4.8 (review 2026-04-17). Riferimento al WorkOrder tipo Sopralluogo collegato a questo servizio.
+    /// Valorizzato da RichiediSopralluogo. Consente a Commercial di leggere esito/questionario compilato.
+    /// </summary>
+    public string? InspectionId { get; set; }
     public string? QuestionnaireId { get; set; }
-    public string? InspectionId { get; set; } // riferimento al WO tipo inspection
+    /// <summary>
+    /// DDD5 §4.8 (review 2026-04-17). True quando il Questionnaire associato e' stato compilato + verificato
+    /// durante il sopralluogo (operatore in Shift). Consente ad AccettaServizio di saltare ToComplete e
+    /// andare direttamente a Ready. Settato da SopralluogoCompletato.
+    /// </summary>
+    public bool QuestionnaireReady { get; private set; }
+    /// <summary>
+    /// DDD5 §2.2e (review 2026-04-16). Altri ServiceBooked appaiati per un trasloco.
+    /// Ritiro.MovingIds = Consegne alimentate; Consegna.MovingIds = Ritiri di provenienza. Vuoto = standalone.
+    /// </summary>
+    public List<string> MovingIds { get; set; } = [];
     public Address? ServiceAddress { get; set; }
     public Address? DestinationAddress { get; set; }
     public string Notes { get; set; } = "";
@@ -52,25 +67,36 @@ public class ServiceBooked : Entity
         Status = newStatus;
     }
 
-    // ToAccept -> PendingInspection
-    public void RichiediSopralluogo()
-    {
-        if (Status == ServiceBookedStatus.ToAccept)
-            SetStatus(ServiceBookedStatus.PendingInspection, "Richiesta sopralluogo");
-    }
-
-    // PendingInspection -> ToAccept (sopralluogo completato, sales rivaluta)
-    public void SopralluogoCompletato()
-    {
-        if (Status == ServiceBookedStatus.PendingInspection)
-            SetStatus(ServiceBookedStatus.ToAccept, "Sopralluogo completato — sales rivaluta");
-    }
-
-    // ToAccept -> ToComplete (quotation finalizzata, cliente accetta)
+    // ToAccept -> ToComplete (quotation finalizzata, cliente accetta).
+    // Se QuestionnaireReady (sopralluogo eseguito) salta ToComplete e va direttamente a Ready.
+    // Non accettabile mentre in WaitingInspection: prima deve tornare ToAccept via SopralluogoCompletato.
     public void AccettaServizio()
     {
-        if (Status == ServiceBookedStatus.ToAccept)
+        if (Status != ServiceBookedStatus.ToAccept) return;
+        if (QuestionnaireReady)
+            SetStatus(ServiceBookedStatus.Ready, "Quotation finalizzata — questionario gia' compilato in sopralluogo");
+        else
             SetStatus(ServiceBookedStatus.ToComplete, "Quotation finalizzata — completare questionario");
+    }
+
+    // ToAccept -> WaitingInspection (Commercial chiede un sopralluogo).
+    // Crea un WorkOrder Sopralluogo dedicato (woId) che porta il QuestionnaireId del template.
+    // Vedi DDD5 §4.8 (review 2026-04-17).
+    public void RichiediSopralluogo(string inspectionWorkOrderId, string questionnaireId)
+    {
+        if (Status != ServiceBookedStatus.ToAccept) return;
+        InspectionId = inspectionWorkOrderId;
+        QuestionnaireId = questionnaireId;
+        SetStatus(ServiceBookedStatus.WaitingInspection, $"Sopralluogo richiesto — WO {inspectionWorkOrderId}");
+    }
+
+    // WaitingInspection -> ToAccept (sopralluogo concluso, questionario compilato, Sales rivaluta).
+    // Segna anche QuestionnaireReady = true: all'AccettaServizio il ServiceBooked saltera' ToComplete.
+    public void SopralluogoCompletato()
+    {
+        if (Status != ServiceBookedStatus.WaitingInspection) return;
+        QuestionnaireReady = true;
+        SetStatus(ServiceBookedStatus.ToAccept, "Sopralluogo completato — questionario compilato in sito");
     }
 
     // ToComplete -> Ready (questionario verificato, dati completi)

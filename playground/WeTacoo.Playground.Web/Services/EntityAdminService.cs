@@ -78,7 +78,6 @@ public class EntityAdminService
         if (q == null || svc == null) return;
 
         if (svc.WorkOrderId != null) DeleteWorkOrder(svc.WorkOrderId);
-        if (svc.InspectionId != null) _state.Inspections.RemoveAll(i => i.Id == svc.InspectionId);
         q.Services.Remove(svc);
     }
 
@@ -118,15 +117,6 @@ public class EntityAdminService
                     svc.WorkOrderId = null;
 
         _state.WorkOrders.Remove(wo);
-    }
-
-    public void DeleteInspection(string inspectionId)
-    {
-        _state.Inspections.RemoveAll(i => i.Id == inspectionId);
-        foreach (var deal in _state.Deals)
-            foreach (var q in deal.Quotations)
-                foreach (var svc in q.Services.Where(s => s.InspectionId == inspectionId))
-                    svc.InspectionId = null;
     }
 
     public void DeletePlanning(string planningId)
@@ -342,7 +332,6 @@ public class EntityAdminService
             case nameof(Product): DeleteProduct(ids[0], ids[1], ids[2]); break;
             case nameof(DraftPlan): DeleteDraftPlan(ids[0], ids[1], ids[2]); break;
             case nameof(WorkOrder): DeleteWorkOrder(ids[0]); break;
-            case nameof(Inspection): DeleteInspection(ids[0]); break;
             case nameof(Planning): DeletePlanning(ids[0]); break;
             case nameof(Mission): DeleteMission(ids[0], ids[1]); break;
             case nameof(PlanningTeam): DeletePlanningTeam(ids[0], ids[1]); break;
@@ -432,7 +421,6 @@ public class EntityAdminService
                 if (svc == null) break;
                 r.Add($"ServiceBooked {svc.Id} ({svc.Type})");
                 if (svc.WorkOrderId != null) r.AddRange(PreviewCascade(nameof(WorkOrder), svc.WorkOrderId).Select(s => "  " + s));
-                if (svc.InspectionId != null) r.Add($"  Inspection {svc.InspectionId}");
                 break;
             }
             case nameof(WorkOrder):
@@ -814,7 +802,6 @@ public class EntityAdminService
         if (_state.Vehicles.FirstOrDefault(x => x.Id == id) is { } v) return (v, nameof(Vehicle), [id]);
         if (_state.Operators.FirstOrDefault(x => x.Id == id) is { } op) return (op, nameof(Operator), [id]);
         if (_state.Payments.FirstOrDefault(x => x.Id == id) is { } pay) return (pay, nameof(Payment), [id]);
-        if (_state.Inspections.FirstOrDefault(x => x.Id == id) is { } insp) return (insp, nameof(Inspection), [id]);
         if (_state.Users.FirstOrDefault(x => x.Id == id) is { } u) return (u, "User", [id]);
         if (_state.Salesmen.FirstOrDefault(x => x.Id == id) is { } sa) return (sa, nameof(Salesman), [id]);
         if (_state.Labels.FirstOrDefault(x => x.Id == id) is { } lb) return (lb, nameof(Label), [id]);
@@ -857,7 +844,6 @@ public class EntityAdminService
         "Mission" => new() { ("PlanningId", "Planning") },
         "PlanningTeam" => new() { ("PlanningId", "Planning") },
         "Payment" => new() { ("DealId", "Deal") },
-        "Inspection" => new() { ("ServiceBookedId", "ServiceBooked") },
         "MarketingClient" => new() { ("CommercialLeadId", "Lead") },
         "HappinessClient" => new() { ("CommercialLeadId", "Lead") },
         "FinancialClient" => new() { ("CommercialLeadId", "Lead") },
@@ -906,16 +892,12 @@ public class EntityAdminService
                 var wo = new WorkOrder {
                     Type = WeTacoo.Domain.Operational.Enums.WorkOrderType.Operational,
                     ServiceType = new WeTacoo.Domain.Operational.ValueObjects.ServiceTypeVO(
-                        WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Ritiro, false, false, false, null)
+                        WeTacoo.Domain.Operational.Enums.ServiceTypeEnum.Ritiro, false, false, null)
                 };
                 _state.WorkOrders.Add(wo); created = wo; break;
             case "Shift":
                 var shift = new Shift { Date = DateTime.Today };
                 _state.Shifts.Add(shift); created = shift; break;
-            case "Inspection":
-                if (!refs.TryGetValue("ServiceBookedId", out var iSvcId)) return null;
-                var insp = new WOp.Inspection { ServiceBookedId = iSvcId, DataRichiesta = DateTime.Today };
-                _state.Inspections.Add(insp); created = insp; break;
             case "Warehouse":
                 var wh = new Warehouse { Name = "Nuovo Magazzino" };
                 _state.Warehouses.Add(wh); created = wh; break;
@@ -929,7 +911,7 @@ public class EntityAdminService
                 var op = new Operator { FirstName = "Nuovo", LastName = "Operatore" };
                 _state.Operators.Add(op); created = op; break;
             case "Slot":
-                var sl = new Slot { Date = DateTime.Today, TimeStart = "09:00", TimeEnd = "12:00", MaxVolume = 50, MaxServices = 5 };
+                var sl = new Slot { Date = DateTime.Today, MaxVolume = 50, MaxServices = 5 };
                 _state.Slots.Add(sl); created = sl; break;
             case "Area":
                 var ar = new WeTacoo.Domain.SharedInfrastructure.Area { Name = "Nuova Area", City = "Milano" };
@@ -1000,7 +982,7 @@ public class EntityAdminService
     public bool CanCreate(string kind) => kind switch
     {
         "Lead" or "Deal" or "Quotation" or "ServiceBooked" or "Planning" or "Mission" or "PlanningTeam" or
-        "WorkOrder" or "Shift" or "Inspection" or "Warehouse" or "Vehicle" or "Asset" or "Operator" or
+        "WorkOrder" or "Shift" or "Warehouse" or "Vehicle" or "Asset" or "Operator" or
         "Slot" or "Area" or "ObjectTemplate" or "ProductTemplate" or "QuestionTemplate" or "Questionnaire" or
         "Coupon" or "Salesman" or "User" or "Payment" or "FinancialClient" or "MarketingClient" or
         "HappinessClient" or "PhysicalObject" or "Pallet" or "ObjectGroup" or "Label" or

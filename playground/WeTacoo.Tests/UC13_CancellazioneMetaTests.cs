@@ -218,7 +218,7 @@ public class UC13_CancellazioneMetaTests
         var woConsegna = new WorkOrder
         {
             Type = WorkOrderType.Commercial,
-            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, false, "area-mi")
+            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, "area-mi")
         };
         woConsegna.ServizioPronto("Sales");
         woConsegna.Programma("Ops");

@@ -37,7 +37,6 @@ public class PlaygroundState
 
     // Operational
     public List<WorkOrder> WorkOrders { get; } = [];
-    public List<Inspection> Inspections { get; } = [];
     public List<Planning> Plannings { get; } = [];
     public List<Slot> Slots { get; } = [];
     public List<Warehouse> Warehouses { get; } = [];
@@ -119,6 +118,8 @@ public class PlaygroundState
 
             // ── Execution -> Operational: Shift completato -> WorkOrder: InEsecuzione -> DaVerificare
             //   Multi-Mission: il WO resta InEsecuzione finche' TUTTI gli Shift associati sono Completati
+            //   Eccezione Sopralluogo (DDD5 §4.8 review 2026-04-17): il WO tipo Sopralluogo salta ToVerify
+            //   e va direttamente a Concluded; il ServiceBooked collegato torna ToAccept automaticamente.
             case OperationCompletedEvent e:
             {
                 if (e.WorkOrderId != null)
@@ -131,8 +132,41 @@ public class PlaygroundState
                         if (allCompleted)
                         {
                             wo.CompletaEsecuzione("Execution");
+                            if (wo.Type == WorkOrderType.Sopralluogo)
+                            {
+                                wo.VerificaEConcludi("Auto (sopralluogo a fine Shift)");
+                                var quest = !string.IsNullOrEmpty(wo.Commercial?.QuestionnaireId)
+                                    ? Questionnaires.FirstOrDefault(qn => qn.Id == wo.Commercial.QuestionnaireId)
+                                    : null;
+                                if (quest != null) quest.IsVerified = true;
+                                if (!string.IsNullOrEmpty(wo.ServiceBookedId) && !string.IsNullOrEmpty(wo.Commercial?.QuestionnaireId))
+                                {
+                                    EventLog.Add(new InspectionCompletataEvent(wo.Id, wo.ServiceBookedId, wo.Commercial.QuestionnaireId));
+                                    ProcessEvent(EventLog[^1]);
+                                }
+                            }
                         }
                         // Altrimenti resta InEsecuzione in attesa degli altri Shift
+                    }
+                }
+                break;
+            }
+
+            // ── Operational -> Commercial: sopralluogo concluso -> ServiceBooked WaitingInspection -> ToAccept.
+            //   Anche il Questionnaire viene marcato verificato (redondante, gia' settato sopra per sicurezza).
+            case InspectionCompletataEvent e:
+            {
+                foreach (var deal in Deals)
+                {
+                    foreach (var q in deal.Quotations)
+                    {
+                        var svc = q.Services.FirstOrDefault(s => s.Id == e.ServiceBookedId);
+                        if (svc != null)
+                        {
+                            svc.SopralluogoCompletato();
+                            var quest = Questionnaires.FirstOrDefault(qn => qn.Id == e.QuestionnaireId);
+                            if (quest != null) quest.IsVerified = true;
+                        }
                     }
                 }
                 break;
@@ -209,18 +243,6 @@ public class PlaygroundState
                 break;
             }
 
-            // ── Operational -> Commercial: inspection completata -> ServiceBooked: InAttesaSopralluogo -> DaAccettare
-            case InspectionCompletataEvent e:
-            {
-                if (e.ServiceBookedId == null) break;
-                foreach (var deal in Deals)
-                    foreach (var q in deal.Quotations)
-                    {
-                        var svc = q.Services.FirstOrDefault(s => s.Id == e.ServiceBookedId);
-                        svc?.SopralluogoCompletato();
-                    }
-                break;
-            }
         }
     }
 
@@ -242,7 +264,7 @@ public class PlaygroundState
         Leads.Clear(); Deals.Clear(); ProductTemplates.Clear(); QuestionTemplates.Clear();
         Questionnaires.Clear(); Coupons.Clear(); Salesmen.Clear();
         ObjectTemplates.Clear(); Areas.Clear();
-        WorkOrders.Clear(); Inspections.Clear(); Plannings.Clear(); Slots.Clear(); Warehouses.Clear();
+        WorkOrders.Clear(); Plannings.Clear(); Slots.Clear(); Warehouses.Clear();
         Vehicles.Clear(); Operators.Clear(); Assets.Clear();
         Shifts.Clear(); Objects.Clear(); WarehouseOperations.Clear(); Labels.Clear();
         Pallets.Clear(); VehicleOperations.Clear(); ObjectGroups.Clear();
@@ -368,11 +390,11 @@ public class PlaygroundState
             var date = DateTime.Today.AddDays(d);
             if (date.DayOfWeek is DayOfWeek.Sunday) continue;
 
-            Slots.Add(new Slot { Date = date, AreaId = areaMilano.Id, WarehouseId = whMilano.Id, MaxVolume = 50, MaxServices = 5, TimeStart = "09:00", TimeEnd = "12:00" });
-            Slots.Add(new Slot { Date = date, AreaId = areaMilano.Id, WarehouseId = whMilano.Id, MaxVolume = 40, MaxServices = 4, TimeStart = "14:00", TimeEnd = "17:00" });
+            Slots.Add(new Slot { Date = date, AreaId = areaMilano.Id, WarehouseId = whMilano.Id, MaxVolume = 50, MaxServices = 5 });
+            Slots.Add(new Slot { Date = date, AreaId = areaMilano.Id, WarehouseId = whMilano.Id, MaxVolume = 40, MaxServices = 4 });
 
             if (d % 2 == 0)
-                Slots.Add(new Slot { Date = date, AreaId = areaRoma.Id, WarehouseId = whRoma.Id, MaxVolume = 40, MaxServices = 4, TimeStart = "09:00", TimeEnd = "13:00" });
+                Slots.Add(new Slot { Date = date, AreaId = areaRoma.Id, WarehouseId = whRoma.Id, MaxVolume = 40, MaxServices = 4 });
         }
 
         // ── Lead pre-popolati ──
@@ -409,7 +431,7 @@ public class PlaygroundState
     {
         ["Commercial"] = Leads.Count + Deals.Count + ProductTemplates.Count + QuestionTemplates.Count + Questionnaires.Count + Coupons.Count + Salesmen.Count,
         ["SharedInfrastructure"] = ObjectTemplates.Count + Areas.Count + Emails.Count,
-        ["Operational"] = WorkOrders.Count + Inspections.Count + Plannings.Count + Slots.Count + Warehouses.Count + Vehicles.Count + Operators.Count + Assets.Count,
+        ["Operational"] = WorkOrders.Count + Plannings.Count + Slots.Count + Warehouses.Count + Vehicles.Count + Operators.Count + Assets.Count,
         ["Execution"] = Shifts.Count + Objects.Count + WarehouseOperations.Count + Labels.Count + Pallets.Count + VehicleOperations.Count + ObjectGroups.Count,
         ["Financial"] = FinancialClients.Count + Payments.Count,
         ["Identity"] = Users.Count,

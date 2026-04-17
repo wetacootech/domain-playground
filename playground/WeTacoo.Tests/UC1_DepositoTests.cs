@@ -155,7 +155,7 @@ public class UC1_DepositoTests
         {
             Type = WorkOrderType.Commercial,
             ServiceBookedId = svc.Id,
-            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, false, "area-001"),
+            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, "area-001"),
             ServiceAddress = svc.ServiceAddress?.ZipCode,
         };
 

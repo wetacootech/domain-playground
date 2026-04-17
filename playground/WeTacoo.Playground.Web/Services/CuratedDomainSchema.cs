@@ -101,11 +101,11 @@ public static class CuratedDomainSchema
         b.Entity("ServiceBooked", "Commercial")
             .VO("Stato").VO("Storico")
             .Xref("QuestionnaireId", "Questionnaire")
-            .Xref("InspectionId", "Inspection")
             .Xref("WorkOrderId", "WorkOrder")
             .VO("DatiServizioRichiesto").VO("DatiServizioCompletato")
             .VO("ContactData").VO("ServiceAddress")
-            .VO("Note").VO("MovingData")
+            .VO("Note")
+            .XrefList("MovingIds", "ServiceBooked")
             .VO("DatiOggettiStimati")
             .XrefList("ListaOggettiSelezionatiIds", "PhysicalObject");
 
@@ -119,12 +119,6 @@ public static class CuratedDomainSchema
             .VO("ServiceAddress").VO("DatiIndirizzo").VO("DatiIndirizzoDestinazione")
             .VO("ServiceTimes").VO("ServiceType").VO("DataEsecuzione")
             .VO("CommercialData").VO("OperationalData").VO("ReferralBoxData");
-
-        b.AR("Inspection", "Operational")
-            .Xref("ServiceBookedId", "ServiceBooked")
-            .Xref("QuestionnaireId", "Questionnaire")
-            .VO("Caratteristiche").VO("DataRichiesta").VO("Documenti")
-            .VO("Stato");
 
         b.AR("Slot", "Operational")
             .VO("SlotData");

@@ -280,5 +280,5 @@
     Color LeadColor(string s) => s switch { "ToConvert" => Color.Info, "Converted" => Color.Success, "Concluded" => Color.Default, _ => Color.Secondary };
     Color DealColor(string s) => s switch { "ToQualify" => Color.Warning, "Qualified" or "InNegotiation" => Color.Info, "Converted" or "Active" => Color.Success, "Concluded" => Color.Default, "NotConverted" or "Cancelled" => Color.Error, _ => Color.Secondary };
     Color QuotColor(string s) => s switch { "Draft" => Color.Default, "InProgress" => Color.Info, "Finalized" => Color.Primary, "ToVerify" or "ToAdjust" => Color.Warning, "Completed" => Color.Success, "Archived" => Color.Default, "Cancelled" => Color.Error, _ => Color.Secondary };
-    Color SBColor(string s) => s switch { "ToAccept" => Color.Default, "PendingInspection" => Color.Info, "ToComplete" => Color.Warning, "Ready" => Color.Primary, "Completed" => Color.Success, "Cancelled" => Color.Error, _ => Color.Secondary };
+    Color SBColor(string s) => s switch { "ToAccept" => Color.Default, "ToComplete" => Color.Warning, "Ready" => Color.Primary, "Completed" => Color.Success, "Cancelled" => Color.Error, _ => Color.Secondary };
 }

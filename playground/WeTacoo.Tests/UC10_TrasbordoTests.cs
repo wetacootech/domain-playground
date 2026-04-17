@@ -33,7 +33,7 @@ public class UC10_TrasbordoTests
         {
             Type = WorkOrderType.Operational,
             ServiceBookedId = null, // nessun ServiceBooked
-            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Trasferimento, false, false, false, "area-mi")
+            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Trasferimento, false, false, "area-mi")
         };
 
         Assert.Equal(WorkOrderType.Operational, woOperational.Type);
@@ -49,7 +49,7 @@ public class UC10_TrasbordoTests
         {
             Type = WorkOrderType.Commercial,
             ServiceBookedId = "svc-ritiro",
-            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, false, "area-mi")
+            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, "area-mi")
         };
         Assert.Equal(WorkOrderType.Commercial, woRitiro.Type);
         Assert.NotNull(woRitiro.ServiceBookedId);
@@ -130,7 +130,7 @@ public class UC10_TrasbordoTests
         var wo = new WorkOrder
         {
             Type = WorkOrderType.Operational,
-            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Trasferimento, false, false, false, null)
+            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Trasferimento, false, false, null)
         };
         wo.ServizioPronto("Planner"); // Non c'e' ServiceBooked, ma i metodi funzionano ugualmente
         wo.Programma("Planner");

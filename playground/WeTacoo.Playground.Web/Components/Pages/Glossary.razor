@@ -36,7 +36,7 @@
                 <tr><td colspan="3"><MudDivider /></td></tr>
 
                 <tr><td><b>Questionnaire</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Primary">Commercial</MudChip></td>
-                    <td>AR in Commercial (DDD5 review 2026-04-13). Questionario pre-vendita: Commercial lo crea, il cliente o il sales lo compila. Se richiesto sopralluogo, le risposte arrivano da Operational tramite evento InspectionCompletata.</td></tr>
+                    <td>AR in Commercial (DDD5 review 2026-04-16). Questionario pre-vendita: Commercial lo crea, il cliente o il sales lo compila. Per sopralluoghi viene aggiornato dall'operatore durante l'esecuzione del WorkOrder di tipo Sopralluogo.</td></tr>
                 <tr><td><b>Area</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Info">SharedInfrastructure</MudChip></td>
                     <td>Area di copertura geografica. Reference data: definisce dove WeTacoo opera, con quali regole di calendarizzazione e tempi minimi di prenotazione.</td></tr>
                 <tr><td><b>ObjectTemplate</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Info">SharedInfrastructure</MudChip></td>
@@ -45,9 +45,7 @@
                 <tr><td colspan="3"><MudDivider /></td></tr>
 
                 <tr><td><b>WorkOrder</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">Operational</MudChip></td>
-                    <td>Unita' di lavoro pianificabile con state machine propria (8 stati). Tipo <b>commercial</b>: nato da vendita (Ritiro, Consegna, Smaltimento). Tipo <b>operational</b>: creato da Ops (trasferimento inter-warehouse, trasbordo). Collegato al ServiceBooked via Id. Il sopralluogo NON e' un WorkOrder: vive in Inspection (AR separato).</td></tr>
-                <tr><td><b>Inspection</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">Operational</MudChip></td>
-                    <td>AR separato per il sopralluogo (DDD5 §4.8). Non genera Mission ne' Shift. Stati: Da completare / Completato / Annullato. Le risposte vivono nel Questionnaire (AR Commercial).</td></tr>
+                    <td>Unita' di lavoro pianificabile con state machine propria (8 stati). Tipo <b>commercial</b>: nato da vendita (Ritiro, Consegna, Smaltimento, Sopralluogo). Tipo <b>operational</b>: creato da Ops (trasferimento inter-warehouse, trasbordo). Collegato al ServiceBooked via Id. DDD5 §4.8 (review 2026-04-16): il sopralluogo e' ora un normale WorkOrder di tipo Sopralluogo (niente piu' AR Inspection).</td></tr>
                 <tr><td><b>Planning</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">Operational</MudChip></td>
                     <td>Pianificazione giornaliera. Uno per giorno (non per area — supporta multiregione). Contiene Resources, Teams e Missions.</td></tr>
                 <tr><td><b>Mission</b></td><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">Operational</MudChip></td>
@@ -120,13 +118,12 @@
             </tbody>
         </MudSimpleTable>
 
-        <MudText Typo="Typo.h6" Class="mt-4 mb-2">ServiceBooked (DDD5 §10c — review 2026-04-13)</MudText>
-        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">Ciclo commerciale: "devo fare qualcosa o no?". 6 stati.</MudText>
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">ServiceBooked (DDD5 §10c — review 2026-04-16)</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">Ciclo commerciale: "devo fare qualcosa o no?". 5 stati (PendingInspection rimosso: Sopralluogo ora e' un ServiceBooked/WorkOrder standard).</MudText>
         <MudSimpleTable Dense="true" Hover="true" Striped="true" Elevation="0">
             <thead><tr><th>Stato</th><th>Significato</th><th>Transizioni</th></tr></thead>
             <tbody>
-                <tr><td><MudChip T="string" Size="Size.Small">ToAccept (Da accettare)</MudChip></td><td>Quotation non finalizzata.</td><td>Accetta Quotation → ToComplete / Richiedi sopralluogo → PendingInspection</td></tr>
-                <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Info">PendingInspection (In attesa sopralluogo)</MudChip></td><td>Sales attende risultati Inspection.</td><td>InspectionCompletata → ToAccept</td></tr>
+                <tr><td><MudChip T="string" Size="Size.Small">ToAccept (Da accettare)</MudChip></td><td>Quotation non finalizzata.</td><td>Accetta Quotation → ToComplete</td></tr>
                 <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Warning">ToComplete (Da completare)</MudChip></td><td>Sales deve agire: questionario, problema, rinegoziazione.</td><td>Questionario verificato → Ready / Chiudi a volume ridotto → Completed / RichiedeIntervento → ToComplete (da Ready)</td></tr>
                 <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Primary">Ready (Pronto)</MudChip></td><td>Nessuna azione Commercial, palla a Operational.</td><td>ServizioCompletato → Completed / RichiedeIntervento → ToComplete</td></tr>
                 <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Success">Completed (Completato)</MudChip></td><td>Terminale positivo.</td><td>—</td></tr>
@@ -162,9 +159,6 @@
                 <tr><td><MudChip T="string" Size="Size.Small" Color="Color.Error">Cancelled (Annullata)</MudChip></td><td>Terminale negativo.</td><td>—</td></tr>
             </tbody>
         </MudSimpleTable>
-
-        <MudText Typo="Typo.h6" Class="mt-4 mb-2">Inspection (DDD5 §4.8)</MudText>
-        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">AR sopralluogo, ciclo semplice: Da completare → Completato (o Annullato). Nessuna Mission/Shift.</MudText>
 
         <MudText Typo="Typo.h6" Class="mt-4 mb-2">Object (Oggetto Fisico)</MudText>
         <MudSimpleTable Dense="true" Hover="true" Striped="true" Elevation="0">

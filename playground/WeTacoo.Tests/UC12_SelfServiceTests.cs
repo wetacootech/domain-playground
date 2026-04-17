@@ -29,10 +29,13 @@ public class UC12_SelfServiceTests
     [Fact]
     public void Step1_ServiceType_Autonomous_Flag()
     {
-        var st = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, true, false, "area-mi");
+        var st = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, true, "area-mi");
         Assert.True(st.IsAutonomous);
         Assert.False(st.IsPartial);
-        Assert.False(st.IsTrasloco);
+
+        // Self-service e' standalone: ServiceBooked.MovingIds deve essere vuoto (DDD5 §2.2e review 2026-04-16)
+        var svc = new ServiceBooked { Type = ServiceBookedType.Ritiro, IsAutonomous = true };
+        Assert.Empty(svc.MovingIds);
     }
 
     [Fact]
@@ -86,7 +89,7 @@ public class UC12_SelfServiceTests
     {
         var wo = new WorkOrder
         {
-            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, true, false, "area-mi"),
+            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, true, "area-mi"),
             EstimatedVolume = 8m,
             ActualVolume = 11m
         };

@@ -18,7 +18,7 @@ public class WorkOrder : AggregateRoot
     public WorkOrderType Type { get; set; } = WorkOrderType.Commercial;
     public WorkOrderStatus Status { get; private set; } = WorkOrderStatus.Completing;
     public string? ServiceBookedId { get; set; }  // riferimento diretto al ServiceBooked in Commercial (per tipo commercial)
-    public ServiceTypeVO ServiceType { get; set; } = new(ServiceTypeEnum.Ritiro, false, false, false, null);
+    public ServiceTypeVO ServiceType { get; set; } = new(ServiceTypeEnum.Ritiro, false, false, null);
     public CommercialData? Commercial { get; set; }
     public OperationalDataVO? Operational { get; set; }
     public string? ServiceAddress { get; set; }

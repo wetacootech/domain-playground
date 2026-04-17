@@ -97,20 +97,43 @@ public class UC2_TraslocoTests
         Assert.Equal(WorkOrderStatus.Completing, woRitiro.Status);
         Assert.Equal(WorkOrderStatus.Completing, woConsegna.Status);
 
-        // WO with IsTrasloco flag
+        // Trasloco: MovingIds appaia Ritiro e Consegna (DDD5 §2.2e review 2026-04-16)
+        var svcRitiro = new ServiceBooked { Type = ServiceBookedType.Ritiro };
+        var svcConsegna = new ServiceBooked { Type = ServiceBookedType.Consegna };
+        svcRitiro.MovingIds.Add(svcConsegna.Id);
+        svcConsegna.MovingIds.Add(svcRitiro.Id);
+
         var woRitiroTyped = new WorkOrder
         {
-            ServiceBookedId = "svc-r",
-            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, true, "area-mi")
+            ServiceBookedId = svcRitiro.Id,
+            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, "area-mi"),
+            Commercial = new CommercialData("lead-1", null, null, [.. svcRitiro.MovingIds], false)
         };
         var woConsegnaTyped = new WorkOrder
         {
-            ServiceBookedId = "svc-c",
-            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, true, "area-to")
+            ServiceBookedId = svcConsegna.Id,
+            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, "area-to"),
+            Commercial = new CommercialData("lead-1", null, null, [.. svcConsegna.MovingIds], false)
         };
 
-        Assert.True(woRitiroTyped.ServiceType.IsTrasloco);
-        Assert.True(woConsegnaTyped.ServiceType.IsTrasloco);
+        Assert.NotEmpty(woRitiroTyped.Commercial!.MovingIds);
+        Assert.NotEmpty(woConsegnaTyped.Commercial!.MovingIds);
+        Assert.Contains(svcConsegna.Id, woRitiroTyped.Commercial.MovingIds);
+        Assert.Contains(svcRitiro.Id, woConsegnaTyped.Commercial.MovingIds);
+    }
+
+    [Fact]
+    public void Step4b_ServiceBooked_MovingIds_ArePairedBiDirectionally()
+    {
+        var svcRitiro = new ServiceBooked { Type = ServiceBookedType.Ritiro };
+        var svcConsegna = new ServiceBooked { Type = ServiceBookedType.Consegna };
+        svcRitiro.MovingIds.Add(svcConsegna.Id);
+        svcConsegna.MovingIds.Add(svcRitiro.Id);
+
+        Assert.Single(svcRitiro.MovingIds);
+        Assert.Single(svcConsegna.MovingIds);
+        Assert.Equal(svcConsegna.Id, svcRitiro.MovingIds[0]);
+        Assert.Equal(svcRitiro.Id, svcConsegna.MovingIds[0]);
     }
 
     [Fact]

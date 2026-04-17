@@ -115,14 +115,6 @@ public record ServizioProntoEvent(string ServiceBookedId, string WorkOrderId) : 
     public override string TargetBC => "Operational";
 }
 
-/// <summary>Commercial -> Operational: richiesta sopralluogo per un ServiceBooked.</summary>
-public record SopralluogoRichiestoEvent(string ServiceBookedId, string? QuestionnaireId, string? Address) : DomainEvent
-{
-    public override string Description => $"Sopralluogo richiesto per ServiceBooked {ServiceBookedId}";
-    public override string SourceBC => "Commercial";
-    public override string TargetBC => "Operational";
-}
-
 /// <summary>Commercial -> Operational: intervento risolto (riprogramma/riprendi/chiudi).</summary>
 public record InterventoRisoltoEvent(string WorkOrderId, string Azione, string Note) : DomainEvent
 {
@@ -155,6 +147,24 @@ public record ServizioCancellatoEvent(string ServiceBookedId, string? WorkOrderI
     public override string TargetBC => "Operational";
 }
 
+// ── Sopralluogo (review 2026-04-17) ──
+
+/// <summary>Commercial -> Operational: richiesto sopralluogo su ServiceBooked -> Operational crea WorkOrder tipo Sopralluogo con QuestionnaireId.</summary>
+public record SopralluogoRichiestoEvent(string ServiceBookedId, string InspectionWorkOrderId, string QuestionnaireId, string? Address, string? Notes) : DomainEvent
+{
+    public override string Description => $"Sopralluogo richiesto su ServiceBooked {ServiceBookedId} -> WO Sopralluogo {InspectionWorkOrderId} (questionario {QuestionnaireId})";
+    public override string SourceBC => "Commercial";
+    public override string TargetBC => "Operational";
+}
+
+/// <summary>Operational -> Commercial: WorkOrder Sopralluogo concluso, questionario disponibile -> ServiceBooked torna ToAccept.</summary>
+public record InspectionCompletataEvent(string InspectionWorkOrderId, string ServiceBookedId, string QuestionnaireId) : DomainEvent
+{
+    public override string Description => $"Sopralluogo WO {InspectionWorkOrderId} completato -> ServiceBooked {ServiceBookedId} (questionario {QuestionnaireId})";
+    public override string SourceBC => "Operational";
+    public override string TargetBC => "Commercial";
+}
+
 // ══════════════════════════════════════════════════
 //  WORKORDER events (Operational -> Commercial)
 // ══════════════════════════════════════════════════
@@ -171,14 +181,6 @@ public record ServizioCompletatoEvent(string WorkOrderId, string? ServiceBookedI
 public record RichiedeInterventoEvent(string WorkOrderId, string? ServiceBookedId, string Motivo) : DomainEvent
 {
     public override string Description => $"WorkOrder {WorkOrderId} richiede intervento: {Motivo}";
-    public override string SourceBC => "Operational";
-    public override string TargetBC => "Commercial";
-}
-
-/// <summary>Operational -> Commercial: sopralluogo eseguito (da AR Inspection, non WorkOrder).</summary>
-public record InspectionCompletataEvent(string InspectionId, string? ServiceBookedId, string? QuestionnaireId) : DomainEvent
-{
-    public override string Description => $"Inspection {InspectionId} completata -> ServiceBooked {ServiceBookedId}";
     public override string SourceBC => "Operational";
     public override string TargetBC => "Commercial";
 }

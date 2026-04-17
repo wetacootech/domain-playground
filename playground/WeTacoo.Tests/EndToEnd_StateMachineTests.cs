@@ -114,7 +114,7 @@ public class EndToEnd_StateMachineTests
         {
             Type = WorkOrderType.Commercial,
             ServiceBookedId = svc.Id,
-            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, false, "area-mi"),
+            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, "area-mi"),
             ServiceAddress = svc.ServiceAddress?.ZipCode,
         };
 

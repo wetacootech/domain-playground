@@ -16,6 +16,11 @@ public enum WorkOrderStatus
     Cancelled      // Terminale negativo
 }
 
-public enum WorkOrderType { Commercial, Operational }
+// DDD5 §4.1 (review 2026-04-17): 3 tipi.
+// - Commercial: generato dall'accettazione di un ServiceBooked venduto (quotation finalizzata)
+// - Operational: creato dal planner per attivita' interne (trasferimenti, trasbordi, magazzino)
+// - Sopralluogo: creato su richiesta "Richiedi sopralluogo" da un ServiceBooked. Non e' un venduto;
+//   durante l'esecuzione l'operatore compila il Questionnaire; a fine WO il ServiceBooked torna ToAccept.
+public enum WorkOrderType { Commercial, Operational, Sopralluogo }
 
 public enum ServiceTypeEnum { Ritiro, Consegna, Smaltimento, Sopralluogo, Trasferimento, Trasbordo }

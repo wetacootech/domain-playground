@@ -149,8 +149,8 @@ public class ScenarioEngine(PlaygroundState state)
                 {
                     Type = WorkOrderType.Commercial,
                     ServiceBookedId = svc.Id,
-                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, false, _state.Areas[0].Id),
-                    Commercial = new CommercialData(lead!.Id, questionnaire.Id, null),
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, _state.Areas[0].Id),
+                    Commercial = new CommercialData(lead!.Id, questionnaire.Id, null, [], false),
                     ServiceAddress = svc.ServiceAddress?.ZipCode,
                     ContactName = "Anna Verdi",
                     EstimatedVolume = 10,
@@ -343,6 +343,9 @@ public class ScenarioEngine(PlaygroundState state)
                 };
                 quotation.Services.Add(svcRitiro);
                 quotation.Services.Add(svcConsegna);
+                // Trasloco: MovingIds appaia Ritiro <-> Consegna (DDD5 §2.2e, review 2026-04-16)
+                svcRitiro.MovingIds.Add(svcConsegna.Id);
+                svcConsegna.MovingIds.Add(svcRitiro.Id);
                 quotation.Products.Add(new Product { Name = "Trasloco bilocale", Price = 890m });
                 quotation.Products.Add(new Product { Name = "Supplemento MI->TO", Price = 150m });
                 deal.Quotations.Add(quotation);
@@ -374,7 +377,7 @@ public class ScenarioEngine(PlaygroundState state)
                 await Task.CompletedTask;
             }),
 
-            new("Step 4: Due WorkOrder (Ritiro + Consegna) con IsTrasloco=true", "Crea WO Ritiro (IsTrasloco=true area-mi) e WO Consegna (IsTrasloco=true area-to). Entrambi ServizioPronto dopo SegnaComePronto su ServiceBooked.", "Operational", async () =>
+            new("Step 4: Due WorkOrder (Ritiro + Consegna) appaiati via MovingIds", "Crea WO Ritiro (area-mi) e WO Consegna (area-to). CommercialData.MovingIds traccia l'accoppiamento trasloco. Entrambi ServizioPronto dopo SegnaComePronto su ServiceBooked.", "Operational", async () =>
             {
                 svcRitiro!.SegnaComePronto();
                 svcConsegna!.SegnaComePronto();
@@ -383,7 +386,8 @@ public class ScenarioEngine(PlaygroundState state)
                 {
                     Type = WorkOrderType.Commercial,
                     ServiceBookedId = svcRitiro.Id,
-                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, true, _state.Areas[0].Id),
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, _state.Areas[0].Id),
+                    Commercial = new CommercialData(lead!.Id, null, null, [.. svcRitiro.MovingIds], false),
                     ServiceAddress = "Via Torino 5, Milano",
                     ContactName = "Laura Bianchi",
                     ScheduledDate = svcRitiro.ScheduledDate,
@@ -393,7 +397,8 @@ public class ScenarioEngine(PlaygroundState state)
                 {
                     Type = WorkOrderType.Commercial,
                     ServiceBookedId = svcConsegna.Id,
-                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, true, _state.Areas[2].Id),
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, _state.Areas[2].Id),
+                    Commercial = new CommercialData(lead.Id, null, null, [.. svcConsegna.MovingIds], false),
                     ServiceAddress = "Corso Francia 10, Torino",
                     ContactName = "Laura Bianchi",
                     ScheduledDate = svcConsegna.ScheduledDate,
@@ -627,8 +632,8 @@ public class ScenarioEngine(PlaygroundState state)
                 {
                     Type = WorkOrderType.Commercial,
                     ServiceBookedId = svcConsegna!.Id,
-                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, true, false, false, _state.Areas[0].Id),
-                    Commercial = new CommercialData(lead!.Id, null, null),
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, true, false, _state.Areas[0].Id),
+                    Commercial = new CommercialData(lead!.Id, null, null, [], false),
                     ServiceAddress = svcConsegna.ServiceAddress?.ZipCode,
                     ContactName = "Giulia Romano",
                     EstimatedVolume = 2m,
@@ -818,7 +823,7 @@ public class ScenarioEngine(PlaygroundState state)
                 {
                     Type = WorkOrderType.Commercial,
                     ServiceBookedId = svc!.Id,
-                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, false, _state.Areas[0].Id),
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, _state.Areas[0].Id),
                     ServiceAddress = svc.ServiceAddress?.ZipCode,
                     ContactName = "Rag. Bianchi",
                     EstimatedVolume = 100m,
@@ -957,16 +962,16 @@ public class ScenarioEngine(PlaygroundState state)
     }
 
     // ══════════════════════════════════════════════════════
-    // UC-5: Sopralluogo che cambia il preventivo
+    // UC-5: Sopralluogo che cambia il preventivo (DDD5 §4.8 review 2026-04-16: Sopralluogo e' un WorkOrder)
     // ══════════════════════════════════════════════════════
     public List<ScenarioStep> GetUC5_SopralluogoSteps()
     {
         Lead? lead = null;
         Deal? deal = null;
         Quotation? quotation = null;
-        ServiceBooked? svc = null;
+        ServiceBooked? svcRitiro = null;
+        WorkOrder? woSopralluogo = null;
         Questionnaire? questionnaire = null;
-        Inspection? inspection = null;
 
         return
         [
@@ -986,116 +991,115 @@ public class ScenarioEngine(PlaygroundState state)
                 await Task.CompletedTask;
             }),
 
-            new("Step 2: Quotation iniziale (stima dubbia)", "Quotation con 1 ServiceBooked Ritiro, prezzo basso (volume dichiarato 18m3 - sottostimato).", "Commercial", async () =>
+            new("Step 2: Quotation iniziale (solo Ritiro)", "Quotation con 1 ServiceBooked Ritiro (volume dichiarato 18m3). Confirm -> InProgress (condizione per richiedere sopralluogo).", "Commercial", async () =>
             {
                 quotation = new Quotation { DealId = deal!.Id, IsInitial = true };
-                svc = new ServiceBooked
+                svcRitiro = new ServiceBooked
                 {
                     Type = ServiceBookedType.Ritiro,
                     ServiceAddress = new Address("20100", _state.Areas[0].Id)
                 };
-                quotation.Services.Add(svc);
+                quotation.Services.Add(svcRitiro);
                 quotation.Products.Add(new Product { Name = "Ritiro (18 m3 dichiarati)", Price = 400m });
-                deal!.Quotations.Add(quotation);
+                deal.Quotations.Add(quotation);
+                quotation.Confirm(); // Draft -> InProgress: ora e' possibile richiedere sopralluogo
                 _state.NotifyStateChanged();
                 await Task.CompletedTask;
             }),
 
-            new("Step 3: Sales richiede sopralluogo", "svc.RichiediSopralluogo -> ServiceBooked InAttesaSopralluogo. Crea Questionnaire (Origin=Inspection).", "Commercial", async () =>
+            new("Step 3: Sales Richiedi sopralluogo sul Ritiro", "Crea Questionnaire template + WorkOrder Sopralluogo (Type=Sopralluogo). svcRitiro.RichiediSopralluogo -> WaitingInspection.", "Commercial", async () =>
             {
-                questionnaire = new Questionnaire { Origin = "Inspection" };
+                questionnaire = new Questionnaire { Origin = "Sopralluogo" };
                 questionnaire.Questions.Add(new Question { Data = new QuestionAnswer("Volume totale?", "number", null, "all") });
                 questionnaire.Questions.Add(new Question { Data = new QuestionAnswer("Piani aggiuntivi?", "boolean", null, "all") });
                 _state.Questionnaires.Add(questionnaire);
-                svc!.QuestionnaireId = questionnaire.Id;
-                svc.RichiediSopralluogo();
-                Emit(new SopralluogoRichiestoEvent(svc.Id, questionnaire.Id, "Via Test 1, Milano"));
-                _state.NotifyStateChanged();
-                await Task.CompletedTask;
-            }),
 
-            new("Step 4: Inspection AR creato in Operational", "Crea Inspection (no WorkOrder, no Mission, no Shift) con ServiceBookedId e QuestionnaireId.", "Operational", async () =>
-            {
-                inspection = new Inspection
+                woSopralluogo = new WorkOrder
                 {
-                    ServiceBookedId = svc!.Id,
-                    QuestionnaireId = questionnaire!.Id,
-                    Caratteristiche = "Appartamento 3 locali, secondo piano senza ascensore",
-                    DataRichiesta = DateTime.Today.AddDays(2)
+                    Type = WorkOrderType.Sopralluogo,
+                    ServiceBookedId = svcRitiro!.Id,
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Sopralluogo, false, false, _state.Areas[0].Id),
+                    Commercial = new CommercialData(lead!.Id, questionnaire.Id, "Sopralluogo propedeutico al Ritiro", [], false),
+                    ServiceAddress = svcRitiro.ServiceAddress?.ZipCode,
+                    ContactName = "Marco Neri",
+                    ScheduledDate = DateTime.Today.AddDays(2)
                 };
-                _state.Inspections.Add(inspection);
+                _state.WorkOrders.Add(woSopralluogo);
+                Emit(new WorkOrderCreatedEvent(woSopralluogo.Id, "Sopralluogo", "Sopralluogo"));
+
+                svcRitiro.RichiediSopralluogo(woSopralluogo.Id, questionnaire.Id);
+                Emit(new SopralluogoRichiestoEvent(svcRitiro.Id, woSopralluogo.Id, questionnaire.Id, svcRitiro.ServiceAddress?.ZipCode, "Volume dichiarato sospetto — verificare in sito"));
+
+                woSopralluogo.ServizioPronto("Commercial");
                 _state.NotifyStateChanged();
                 await Task.CompletedTask;
             }),
 
-            new("Step 5: Operatore compila Questionnaire incrementale", "AnswerQuestion progressivo: volume reale 28m3, piani aggiuntivi true. IsVerified al termine.", "Operational", async () =>
+            new("Step 4: Shift sopralluogo creato + avviato + questionario compilato + chiuso (auto-conclude)", "Planner crea Shift per il WO Sopralluogo, operatore compila questionnaire e chiude lo Shift. L'handler OperationCompletedEvent su WO tipo Sopralluogo salta ToVerify e auto-conclude + SopralluogoCompletato sul ServiceBooked.", "Execution", async () =>
             {
-                questionnaire!.AnswerQuestion(questionnaire.Questions[0].Id, "28");
+                woSopralluogo!.Programma("RespOps");
+                var shiftSopr = new Shift
+                {
+                    MissionId = null,
+                    Date = DateTime.Today.AddDays(2)
+                };
+                shiftSopr.ServiceEntries.Add(new ServiceEntry
+                {
+                    ServiceId = woSopralluogo.Id,
+                    LeadId = lead!.Id,
+                    Type = ServiceEntryType.Sopralluogo,
+                    Inspection = new InspectionData(woSopralluogo.Id, questionnaire!.Id),
+                    ClientInfo = new ClientData("Marco Neri", "+39 333 0000")
+                });
+                _state.Shifts.Add(shiftSopr);
+
+                shiftSopr.Start();
+                Emit(new OperationStartedEvent(shiftSopr.Id, woSopralluogo.Id));
+
+                questionnaire.AnswerQuestion(questionnaire.Questions[0].Id, "28");
                 questionnaire.AnswerQuestion(questionnaire.Questions[1].Id, "true");
-                questionnaire.IsVerified = true;
+
+                shiftSopr.ServiceEntries[0].Complete();
+                shiftSopr.Complete();
+                Emit(new OperationCompletedEvent(shiftSopr.Id, woSopralluogo.Id));
                 _state.NotifyStateChanged();
                 await Task.CompletedTask;
             }),
 
-            new("Step 6: Documenti e foto allegati a Inspection", "inspection.Documenti: foto-seminterrato, foto-accesso, planimetria.", "Operational", async () =>
-            {
-                inspection!.Documenti.Add("foto-seminterrato.jpg");
-                inspection.Documenti.Add("foto-accesso.jpg");
-                inspection.Documenti.Add("planimetria.pdf");
-                _state.NotifyStateChanged();
-                await Task.CompletedTask;
-            }),
-
-            new("Step 7: Inspection.Complete('op-ispettore')", "Operatore marca Inspection completata -> IsCompleted=true.", "Operational", async () =>
-            {
-                inspection!.Complete("op-ispettore");
-                Emit(new InspectionCompletataEvent(inspection.Id, inspection.ServiceBookedId, inspection.QuestionnaireId));
-                _state.NotifyStateChanged();
-                await Task.CompletedTask;
-            }),
-
-            new("Step 8: ServiceBooked torna DaAccettare", "InspectionCompletataEvent -> svc.SopralluogoCompletato -> DaAccettare (gestito da PlaygroundState.ProcessEvent).", "Commercial", async () =>
-            {
-                // Event processed by PlaygroundState: svc.SopralluogoCompletato() already invoked.
-                _state.NotifyStateChanged();
-                await Task.CompletedTask;
-            }),
-
-            new("Step 9: Sales rinegozia prezzo", "Sales aggiorna Products: Ritiro (28 m3) 650m. Quotation resta Draft (non cambia stato per sopralluogo).", "Commercial", async () =>
+            new("Step 5: Sales rinegozia prezzo Ritiro", "Sales legge risultati questionario (28 m3 reali) e aggiorna Products: Ritiro 650m. Quotation resta InProgress.", "Commercial", async () =>
             {
                 quotation!.Products.Clear();
-                quotation.Products.Add(new Product { Name = "Ritiro (28 m3, sopralluogo)", Price = 650m });
+                quotation.Products.Add(new Product { Name = "Ritiro (28 m3, post-sopralluogo)", Price = 650m });
                 _state.NotifyStateChanged();
                 await Task.CompletedTask;
             }),
 
-            new("Step 10: Cliente accetta nuovo prezzo", "quotation.Finalize, Deal.Convert, svc.AccettaServizio.", "Commercial", async () =>
+            new("Step 6: Cliente accetta nuovo prezzo", "quotation.Finalize, Deal.Convert, svcRitiro.AccettaServizio. Con sopralluogo concluso + QuestionnaireReady salta ToComplete e va direttamente a Ready.", "Commercial", async () =>
             {
                 quotation!.Finalize();
                 deal!.Convert();
                 lead!.MarkConverted();
                 Emit(new QuotationAcceptedEvent(quotation.Id, deal.Id, lead.Id, false));
                 Emit(new DealConvertedEvent(deal.Id, lead.Id));
-                svc!.AccettaServizio();
+                svcRitiro!.AccettaServizio();
                 _state.NotifyStateChanged();
                 await Task.CompletedTask;
             }),
 
-            new("Step 11: WorkOrder creato (post-sopralluogo)", "svc.SegnaComePronto. Crea WorkOrder Commercial Ritiro con volume reale 28m3. ServizioPronto -> DaProgrammare.", "Operational", async () =>
+            new("Step 7: WorkOrder Ritiro (post-sopralluogo)", "ServiceBooked gia' Ready dal sopralluogo: crea WorkOrder Commercial Ritiro con volume reale 28m3. ServizioPronto -> ToSchedule.", "Operational", async () =>
             {
-                svc!.SegnaComePronto();
                 var wo = new WorkOrder
                 {
                     Type = WorkOrderType.Commercial,
-                    ServiceBookedId = svc.Id,
-                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, false, _state.Areas[0].Id),
-                    Commercial = new CommercialData(lead!.Id, questionnaire!.Id, inspection!.Id),
-                    ServiceAddress = svc.ServiceAddress?.ZipCode,
+                    ServiceBookedId = svcRitiro.Id,
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, _state.Areas[0].Id),
+                    Commercial = new CommercialData(lead!.Id, questionnaire!.Id, "Volume da sopralluogo: 28 m3", [], false),
+                    ServiceAddress = svcRitiro.ServiceAddress?.ZipCode,
                     ContactName = "Marco Neri",
                     EstimatedVolume = 28m
                 };
                 _state.WorkOrders.Add(wo);
-                svc.WorkOrderId = wo.Id;
+                svcRitiro.WorkOrderId = wo.Id;
                 Emit(new WorkOrderCreatedEvent(wo.Id, "Commercial", "Ritiro"));
                 wo.ServizioPronto("Commercial");
                 _state.NotifyStateChanged();
@@ -1154,7 +1158,7 @@ public class ScenarioEngine(PlaygroundState state)
                 {
                     Type = WorkOrderType.Commercial,
                     ServiceBookedId = svc.Id,
-                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, false, _state.Areas[0].Id),
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, _state.Areas[0].Id),
                     EstimatedVolume = 15m
                 };
                 _state.WorkOrders.Add(wo);
@@ -1355,7 +1359,7 @@ public class ScenarioEngine(PlaygroundState state)
                 {
                     Type = WorkOrderType.Commercial,
                     ServiceBookedId = svc!.Id,
-                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, false, _state.Areas[0].Id),
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, _state.Areas[0].Id),
                     EstimatedVolume = 5m
                 };
                 _state.WorkOrders.Add(wo);
@@ -1562,7 +1566,7 @@ public class ScenarioEngine(PlaygroundState state)
                 {
                     Type = WorkOrderType.Commercial,
                     ServiceBookedId = svcConsegna!.Id,
-                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, false, _state.Areas[0].Id)
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, _state.Areas[0].Id)
                 };
                 _state.WorkOrders.Add(woConsegna);
                 svcConsegna.WorkOrderId = woConsegna.Id;
@@ -1850,8 +1854,8 @@ public class ScenarioEngine(PlaygroundState state)
             {
                 var svcMI = qConsMI!.Services[0];
                 var svcRM = qConsRM!.Services[0];
-                var woMI = new WorkOrder { Type = WorkOrderType.Commercial, ServiceBookedId = svcMI.Id, ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, false, _state.Areas[0].Id) };
-                var woRM = new WorkOrder { Type = WorkOrderType.Commercial, ServiceBookedId = svcRM.Id, ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, false, _state.Areas[1].Id) };
+                var woMI = new WorkOrder { Type = WorkOrderType.Commercial, ServiceBookedId = svcMI.Id, ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, _state.Areas[0].Id) };
+                var woRM = new WorkOrder { Type = WorkOrderType.Commercial, ServiceBookedId = svcRM.Id, ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, _state.Areas[1].Id) };
                 _state.WorkOrders.Add(woMI);
                 _state.WorkOrders.Add(woRM);
                 svcMI.WorkOrderId = woMI.Id;
@@ -1984,7 +1988,7 @@ public class ScenarioEngine(PlaygroundState state)
                 {
                     Type = WorkOrderType.Commercial,
                     ServiceBookedId = svcRitiroX.Id,
-                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, false, _state.Areas[0].Id)
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, _state.Areas[0].Id)
                 };
                 _state.WorkOrders.Add(woRitiroComm);
                 svcRitiroX.WorkOrderId = woRitiroComm.Id;
@@ -2040,7 +2044,7 @@ public class ScenarioEngine(PlaygroundState state)
                 {
                     Type = WorkOrderType.Operational,
                     ServiceBookedId = null,
-                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Trasferimento, false, false, false, _state.Areas[0].Id)
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Trasferimento, false, false, _state.Areas[0].Id)
                 };
                 _state.WorkOrders.Add(woTrasferimentoOp);
                 Emit(new WorkOrderCreatedEvent(woTrasferimentoOp.Id, "Operational", "Trasferimento"));
@@ -2210,13 +2214,13 @@ public class ScenarioEngine(PlaygroundState state)
                 {
                     Type = WorkOrderType.Commercial,
                     ServiceBookedId = svcSmalt!.Id,
-                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Smaltimento, false, false, false, _state.Areas[0].Id)
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Smaltimento, false, false, _state.Areas[0].Id)
                 };
                 woCons = new WorkOrder
                 {
                     Type = WorkOrderType.Commercial,
                     ServiceBookedId = svcConsegna!.Id,
-                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, false, _state.Areas[0].Id)
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, _state.Areas[0].Id)
                 };
                 _state.WorkOrders.Add(woSmalt);
                 _state.WorkOrders.Add(woCons);
@@ -2388,7 +2392,7 @@ public class ScenarioEngine(PlaygroundState state)
                 {
                     Type = WorkOrderType.Commercial,
                     ServiceBookedId = svc!.Id,
-                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, true, false, _state.Areas[0].Id),
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, true, _state.Areas[0].Id),
                     EstimatedVolume = 8m
                 };
                 _state.WorkOrders.Add(wo);
@@ -2580,7 +2584,7 @@ public class ScenarioEngine(PlaygroundState state)
                 {
                     Type = WorkOrderType.Commercial,
                     ServiceBookedId = svcRitiro!.Id,
-                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, false, _state.Areas[0].Id),
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Ritiro, false, false, _state.Areas[0].Id),
                     EstimatedVolume = 80m
                 };
                 _state.WorkOrders.Add(woRitiro);
@@ -2699,7 +2703,7 @@ public class ScenarioEngine(PlaygroundState state)
                 {
                     Type = WorkOrderType.Commercial,
                     ServiceBookedId = svcConsegna.Id,
-                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, false, _state.Areas[0].Id)
+                    ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, _state.Areas[0].Id)
                 };
                 _state.WorkOrders.Add(woConsegna);
                 svcConsegna.WorkOrderId = woConsegna.Id;

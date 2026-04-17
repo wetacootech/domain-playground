@@ -108,7 +108,7 @@ public class UC3_ConsegnaParzialeTests
         var wo = new WorkOrder
         {
             ServiceBookedId = svc.Id,
-            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, false, "area-mi"),
+            ServiceType = new ServiceTypeVO(ServiceTypeEnum.Consegna, false, false, "area-mi"),
             ScheduledDate = svc.ScheduledDate
         };
         svc.WorkOrderId = wo.Id;
