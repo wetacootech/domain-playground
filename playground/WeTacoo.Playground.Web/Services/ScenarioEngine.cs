@@ -142,8 +142,8 @@ public class ScenarioEngine(PlaygroundState state)
                 questionnaire.Questions.Add(new Question { Data = new QuestionAnswer("Ascensore?", "boolean", "true", "client") });
                 questionnaire.Questions.Add(new Question { Data = new QuestionAnswer("Volume stimato m3?", "number", "10", "client") });
                 _state.Questionnaires.Add(questionnaire);
-                svc!.QuestionnaireId = questionnaire.Id;
-                svc.SegnaComePronto();
+                quotation!.QuestionnaireId = questionnaire.Id; // Questionnaire unico per Quotation (review 2026-04-17)
+                svc!.SegnaComePronto();
 
                 wo = new WorkOrder
                 {
@@ -1027,7 +1027,8 @@ public class ScenarioEngine(PlaygroundState state)
                 _state.WorkOrders.Add(woSopralluogo);
                 Emit(new WorkOrderCreatedEvent(woSopralluogo.Id, "Sopralluogo", "Sopralluogo"));
 
-                svcRitiro.RichiediSopralluogo(woSopralluogo.Id, questionnaire.Id);
+                quotation!.QuestionnaireId = questionnaire.Id; // Questionnaire unico per Quotation
+                svcRitiro.RichiediSopralluogo(woSopralluogo.Id);
                 Emit(new SopralluogoRichiestoEvent(svcRitiro.Id, woSopralluogo.Id, questionnaire.Id, svcRitiro.ServiceAddress?.ZipCode, "Volume dichiarato sospetto — verificare in sito"));
 
                 woSopralluogo.ServizioPronto("Commercial");

@@ -30,6 +30,12 @@ public class WorkOrder : AggregateRoot
     public DateTime? ScheduledDate { get; set; }
     public string? ScheduledSlot { get; set; }
     public List<string> StatusHistory { get; private set; } = [];
+    /// <summary>
+    /// DDD5 §10d (review 2026-04-17): true quando la pausa richiede decisione Commercial (serve escalation).
+    /// False = gestione interna Ops (planner risolve senza coinvolgere Sales).
+    /// Significativo solo quando Status == Paused. Resettato a false all'uscita dalla pausa.
+    /// </summary>
+    public bool PausedForCommercial { get; private set; }
 
     private void SetStatus(WorkOrderStatus newStatus, string reason)
     {
@@ -87,39 +93,50 @@ public class WorkOrder : AggregateRoot
             SetStatus(WorkOrderStatus.ToSchedule, $"Interrotto da {by} — riprogrammare");
     }
 
-    // InExecution -> Paused (serve decisione Commercial)
-    public void MettiInPausa(string motivo)
+    // InExecution -> Paused. forCommercial=true segnala che serve decisione Sales (scattera' RichiedeInterventoEvent).
+    // forCommercial=false = gestione interna Ops (planner risolve senza coinvolgere Commercial).
+    public void MettiInPausa(string motivo, bool forCommercial = true)
     {
-        if (Status == WorkOrderStatus.InExecution)
-            SetStatus(WorkOrderStatus.Paused, $"In pausa: {motivo}");
+        if (Status != WorkOrderStatus.InExecution) return;
+        PausedForCommercial = forCommercial;
+        var tag = forCommercial ? "serve Commercial" : "gestione Ops";
+        SetStatus(WorkOrderStatus.Paused, $"In pausa ({tag}): {motivo}");
     }
 
-    // ToSchedule -> Paused (non programmabile, serve decisione Commercial)
-    public void NonProgrammabile(string motivo)
+    // ToSchedule -> Paused (non programmabile). forCommercial=true escalation a Sales, false = Ops riprova.
+    public void NonProgrammabile(string motivo, bool forCommercial = true)
     {
-        if (Status == WorkOrderStatus.ToSchedule)
-            SetStatus(WorkOrderStatus.Paused, $"Non programmabile: {motivo}");
+        if (Status != WorkOrderStatus.ToSchedule) return;
+        PausedForCommercial = forCommercial;
+        var tag = forCommercial ? "serve Commercial" : "gestione Ops";
+        SetStatus(WorkOrderStatus.Paused, $"Non programmabile ({tag}): {motivo}");
     }
 
-    // Paused -> ToSchedule (InterventoRisolto "riprogramma")
+    // Paused -> ToSchedule. Usato sia da Commercial (InterventoRisolto riprogramma — DEPRECATO 2026-04-17)
+    // sia da Ops (gestione interna: planner decide di riprogrammare).
     public void InterventoRisoltoRiprogramma(string note)
     {
-        if (Status == WorkOrderStatus.Paused)
-            SetStatus(WorkOrderStatus.ToSchedule, $"Intervento risolto (riprogramma): {note}");
+        if (Status != WorkOrderStatus.Paused) return;
+        PausedForCommercial = false;
+        SetStatus(WorkOrderStatus.ToSchedule, $"Riprogramma: {note}");
     }
 
-    // Paused -> InExecution (InterventoRisolto "riprendi")
+    // Paused -> InExecution. Usato da Commercial "Riprendi servizio" (review 2026-04-17, opzione a)
+    // o da Ops per gestione interna se team ancora sul posto.
     public void InterventoRisoltoRiprendi(string note)
     {
-        if (Status == WorkOrderStatus.Paused)
-            SetStatus(WorkOrderStatus.InExecution, $"Intervento risolto (riprendi): {note}");
+        if (Status != WorkOrderStatus.Paused) return;
+        PausedForCommercial = false;
+        SetStatus(WorkOrderStatus.InExecution, $"Riprendi: {note}");
     }
 
-    // Paused -> ToVerify (InterventoRisolto "chiudi")
+    // Paused -> ToVerify (InterventoRisolto "chiudi"). Canale storico, non piu' esposto a Commercial UI (review 2026-04-17).
+    // Ancora usabile per UC-13 (ChiusuraAnticipata invocata su WO in pausa con esecuzione parziale).
     public void InterventoRisoltoChiudi(string note)
     {
-        if (Status == WorkOrderStatus.Paused)
-            SetStatus(WorkOrderStatus.ToVerify, $"Intervento risolto (chiudi): {note}");
+        if (Status != WorkOrderStatus.Paused) return;
+        PausedForCommercial = false;
+        SetStatus(WorkOrderStatus.ToVerify, $"Intervento risolto (chiudi): {note}");
     }
 
     // ToVerify -> Concluded

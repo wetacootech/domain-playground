@@ -38,13 +38,8 @@ public class ServiceBooked : Entity
     /// Valorizzato da RichiediSopralluogo. Consente a Commercial di leggere esito/questionario compilato.
     /// </summary>
     public string? InspectionId { get; set; }
-    public string? QuestionnaireId { get; set; }
-    /// <summary>
-    /// DDD5 §4.8 (review 2026-04-17). True quando il Questionnaire associato e' stato compilato + verificato
-    /// durante il sopralluogo (operatore in Shift). Consente ad AccettaServizio di saltare ToComplete e
-    /// andare direttamente a Ready. Settato da SopralluogoCompletato.
-    /// </summary>
-    public bool QuestionnaireReady { get; private set; }
+    // QuestionnaireId rimosso (review 2026-04-17): il Questionnaire e' unico per Quotation, non per ServiceBooked. Vedi Quotation.QuestionnaireId.
+    // QuestionnaireReady spostato su Quotation (review 2026-04-17).
     /// <summary>
     /// DDD5 §2.2e (review 2026-04-16). Altri ServiceBooked appaiati per un trasloco.
     /// Ritiro.MovingIds = Consegne alimentate; Consegna.MovingIds = Ritiri di provenienza. Vuoto = standalone.
@@ -54,6 +49,17 @@ public class ServiceBooked : Entity
     public Address? DestinationAddress { get; set; }
     public string Notes { get; set; } = "";
     public List<string> SelectedObjectIds { get; set; } = [];
+    /// <summary>
+    /// Lista oggetti stimati (DDD5 §2.1 EstimatedObject, review 2026-04-17). Ogni riga
+    /// referenzia un ObjectTemplate di Shared Infrastructure e porta quantita' + snapshot
+    /// del volume unitario. Alternativa a DeclaredVolume: se valorizzata, EstimatedVolume
+    /// e' derivato; altrimenti cade su DeclaredVolume. Immutabile dopo finalizzazione (SB.Status != ToAccept).
+    /// </summary>
+    public List<ServiceBookedItem> Items { get; set; } = [];
+    /// <summary>Volume dichiarato spannometrico (m³) quando l'agente non dettaglia oggetti. Alternativo a Items.</summary>
+    public decimal? DeclaredVolume { get; set; }
+    /// <summary>Volume stimato: somma Items se presenti, altrimenti DeclaredVolume (o 0).</summary>
+    public decimal EstimatedVolume => Items.Count > 0 ? Items.Sum(i => i.Quantity * i.UnitVolume) : (DeclaredVolume ?? 0m);
     public DateTime? ScheduledDate { get; set; }
     public string? ScheduledSlot { get; set; }
     public List<string> StatusHistory { get; private set; } = [];
@@ -68,35 +74,34 @@ public class ServiceBooked : Entity
     }
 
     // ToAccept -> ToComplete (quotation finalizzata, cliente accetta).
-    // Se QuestionnaireReady (sopralluogo eseguito) salta ToComplete e va direttamente a Ready.
+    // Se questionnaireReady (passato dal caller leggendo Quotation.QuestionnaireReady) salta ToComplete e va direttamente a Ready.
     // Non accettabile mentre in WaitingInspection: prima deve tornare ToAccept via SopralluogoCompletato.
-    public void AccettaServizio()
+    public void AccettaServizio(bool questionnaireReady = false)
     {
         if (Status != ServiceBookedStatus.ToAccept) return;
-        if (QuestionnaireReady)
+        if (questionnaireReady)
             SetStatus(ServiceBookedStatus.Ready, "Quotation finalizzata — questionario gia' compilato in sopralluogo");
         else
             SetStatus(ServiceBookedStatus.ToComplete, "Quotation finalizzata — completare questionario");
     }
 
     // ToAccept -> WaitingInspection (Commercial chiede un sopralluogo).
-    // Crea un WorkOrder Sopralluogo dedicato (woId) che porta il QuestionnaireId del template.
-    // Vedi DDD5 §4.8 (review 2026-04-17).
-    public void RichiediSopralluogo(string inspectionWorkOrderId, string questionnaireId)
+    // Il QuestionnaireId e' sulla Quotation (unico per Quotation, review 2026-04-17) — non passato al SB.
+    // Crea un WorkOrder Sopralluogo dedicato (woId).
+    public void RichiediSopralluogo(string inspectionWorkOrderId)
     {
         if (Status != ServiceBookedStatus.ToAccept) return;
         InspectionId = inspectionWorkOrderId;
-        QuestionnaireId = questionnaireId;
         SetStatus(ServiceBookedStatus.WaitingInspection, $"Sopralluogo richiesto — WO {inspectionWorkOrderId}");
     }
 
-    // WaitingInspection -> ToAccept (sopralluogo concluso, questionario compilato, Sales rivaluta).
-    // Segna anche QuestionnaireReady = true: all'AccettaServizio il ServiceBooked saltera' ToComplete.
+    // WaitingInspection -> ToAccept (sopralluogo concluso, Sales rivaluta).
+    // Il flag QuestionnaireReady ora vive sulla Quotation (review 2026-04-17): MarkQuestionnaireReady deve essere
+    // chiamato a parte dal handler a livello di Quotation.
     public void SopralluogoCompletato()
     {
         if (Status != ServiceBookedStatus.WaitingInspection) return;
-        QuestionnaireReady = true;
-        SetStatus(ServiceBookedStatus.ToAccept, "Sopralluogo completato — questionario compilato in sito");
+        SetStatus(ServiceBookedStatus.ToAccept, "Sopralluogo completato — questionario disponibile sulla Quotation");
     }
 
     // ToComplete -> Ready (questionario verificato, dati completi)
@@ -139,6 +144,50 @@ public class ServiceBooked : Entity
     {
         SetStatus(ServiceBookedStatus.Cancelled, "Annullato");
     }
+
+    // ── Gestione Items (oggetti stimati) — mutabili solo mentre Status == ToAccept ──
+
+    /// Aggiunge una riga item. No-op se il servizio non e' piu' modificabile (Status != ToAccept).
+    public void AddItem(string objectTemplateId, string templateName, int quantity, decimal unitVolume)
+    {
+        if (Status != ServiceBookedStatus.ToAccept) return;
+        if (quantity <= 0 || unitVolume < 0) return;
+        var existing = Items.FindIndex(i => i.ObjectTemplateId == objectTemplateId);
+        if (existing >= 0)
+            Items[existing] = Items[existing] with { Quantity = Items[existing].Quantity + quantity };
+        else
+            Items.Add(new ServiceBookedItem(objectTemplateId, templateName, quantity, unitVolume));
+        DeclaredVolume = null;
+    }
+
+    public void UpdateItemQuantity(string objectTemplateId, int quantity)
+    {
+        if (Status != ServiceBookedStatus.ToAccept) return;
+        var idx = Items.FindIndex(i => i.ObjectTemplateId == objectTemplateId);
+        if (idx < 0) return;
+        if (quantity <= 0) Items.RemoveAt(idx);
+        else Items[idx] = Items[idx] with { Quantity = quantity };
+    }
+
+    public void RemoveItem(string objectTemplateId)
+    {
+        if (Status != ServiceBookedStatus.ToAccept) return;
+        Items.RemoveAll(i => i.ObjectTemplateId == objectTemplateId);
+    }
+
+    public void ClearItems()
+    {
+        if (Status != ServiceBookedStatus.ToAccept) return;
+        Items.Clear();
+    }
+
+    public void SetDeclaredVolume(decimal? volume)
+    {
+        if (Status != ServiceBookedStatus.ToAccept) return;
+        if (volume.HasValue && volume.Value < 0) return;
+        DeclaredVolume = volume;
+        if (volume.HasValue) Items.Clear();
+    }
 }
 
 public class Quotation : Entity
@@ -156,6 +205,23 @@ public class Quotation : Entity
     public List<DraftPlan> DraftPlans { get; set; } = [];
     public PaymentCondition? PaymentCondition { get; set; }
     public string? CouponCode { get; set; }
+    /// <summary>
+    /// DDD5 §3.1 (review 2026-04-17, XML TO BE DDD 7): il Questionnaire e' **unico per Quotation**,
+    /// non per singolo ServiceBooked. Raccoglie le info di contesto commerciale/operativo per tutti i servizi.
+    /// </summary>
+    public string? QuestionnaireId { get; set; }
+
+    /// <summary>
+    /// DDD5 §4.8 (review 2026-04-17): true quando il Questionnaire della Quotation e' stato verificato.
+    /// Settato da MarkQuestionnaireReady (es. dopo conclusione sopralluogo).
+    /// Passato ai ServiceBooked al momento di AccettaServizio per decidere se saltare ToComplete.
+    /// </summary>
+    public bool QuestionnaireReady { get; private set; }
+
+    public void MarkQuestionnaireReady()
+    {
+        QuestionnaireReady = true;
+    }
     public decimal TotalPrice => Products.Sum(p => p.Price);
 
     // Convenience for backward compat — accepted = Finalized or beyond
@@ -179,3 +245,12 @@ public class Quotation : Entity
 
 // Value Objects
 public record CompletionRecord(decimal ActualVolume, int ObjectsMoved, string? DifferencesNotes, DateTime CompletedAt) : ValueObject;
+
+/// <summary>
+/// Riga di oggetti stimati su un ServiceBooked (DDD5 §2.1, review 2026-04-17).
+/// Snapshot: TemplateName e UnitVolume sono immutabili e non seguono modifiche successive di ObjectTemplate.
+/// </summary>
+public record ServiceBookedItem(string ObjectTemplateId, string TemplateName, int Quantity, decimal UnitVolume) : ValueObject
+{
+    public decimal TotalVolume => Quantity * UnitVolume;
+}

@@ -6,6 +6,16 @@ public record ClientData(string ClientName, string Phone, string? Signature = nu
 public record InspectionData(string? InspectionId, string? QuestionnaireId) : ValueObject;
 
 /// <summary>
+/// Snapshot immutabile della lista oggetti stimati del ServiceBooked venduto (DDD5 §2.1, review 2026-04-17).
+/// Copia di ServiceBookedItem dal lato Commercial, congelata alla creazione dello Shift.
+/// Serve da riferimento per l'operatore in sito ("questi sono gli oggetti dichiarati in vendita").
+/// </summary>
+public record ReferenceItem(string ObjectTemplateId, string TemplateName, int Quantity, decimal UnitVolume) : ValueObject
+{
+    public decimal TotalVolume => Quantity * UnitVolume;
+}
+
+/// <summary>
 /// ServiceEntry — scheda operativa per un WorkOrder all'interno di uno Shift (DDD5 §5.1, review 2026-04-14).
 /// Nessuna state machine: solo flag <see cref="Completed"/> + <see cref="CompletedAt"/>.
 /// Gli esiti "parziale / interrotto / fallito" vivono nel payload di chiusura dello Shift (Sospesa),
@@ -20,6 +30,10 @@ public class ServiceEntry : Entity
     public ServiceEntryType Type { get; set; }
     public ClientData? ClientInfo { get; set; }
     public InspectionData? Inspection { get; set; }
+    /// <summary>Snapshot della lista oggetti stimati dal ServiceBooked venduto. Riferimento read-only per operatore.</summary>
+    public List<ReferenceItem> ReferenceItems { get; set; } = [];
+    /// <summary>Volume stimato congelato dal ServiceBooked al momento della creazione dello Shift.</summary>
+    public decimal ReferenceVolume { get; set; }
 
     /// <summary>L'operatore dichiara "fatto" per questo Service. Immutabile una volta true.</summary>
     public bool Completed { get; private set; }

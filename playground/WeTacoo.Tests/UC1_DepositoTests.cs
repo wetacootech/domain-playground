@@ -144,10 +144,10 @@ public class UC1_DepositoTests
         Assert.Equal(WorkOrderStatus.Completing, wo.Status);
         Assert.Equal(DateTime.Today.AddDays(5), wo.ScheduledDate);
 
-        // Create Questionnaire
+        // Create Questionnaire (unico per Quotation, review 2026-04-17)
         var questionnaire = new Questionnaire { Origin = "Quotation" };
         questionnaire.Questions.Add(new Question { Data = new QuestionAnswer("Fragili?", "boolean", null, "all") });
-        svc.QuestionnaireId = questionnaire.Id;
+        quotation.QuestionnaireId = questionnaire.Id;
         Assert.False(questionnaire.IsCompleted);
 
         // Create WorkOrder for execution

@@ -239,11 +239,11 @@
                                     }
                                 </div>
 
-                                @* ── Interventi richiesti (WO In pausa di questo Deal) — decisione Commercial ── *@
+                                @* ── Interventi richiesti (WO In pausa per Commercial di questo Deal, review 2026-04-17) ── *@
                                 @{
                                     var dealWosInPausa = deal.Quotations.SelectMany(q => q.Services)
                                         .Select(s => s.WorkOrderId != null ? State.WorkOrders.FirstOrDefault(w => w.Id == s.WorkOrderId) : null)
-                                        .Where(w => w != null && w.Status == WeTacoo.Domain.Operational.Enums.WorkOrderStatus.Paused)
+                                        .Where(w => w != null && w.Status == WeTacoo.Domain.Operational.Enums.WorkOrderStatus.Paused && w.PausedForCommercial)
                                         .Cast<WeTacoo.Domain.Operational.WorkOrder>()
                                         .ToList();
                                 }
@@ -256,20 +256,42 @@
                                     {
                                         var pwoId = pausedWo.Id;
                                         var pausedSvc = FindServiceForWo(pausedWo);
+                                        var causa = pausedWo.StatusHistory.LastOrDefault(h => h.Contains("-> Paused"));
                                         <MudPaper Class="pa-2 mb-2" Outlined="true" Style="border-left: 3px solid var(--mud-palette-error);">
                                             <MudText Typo="Typo.caption"><b>Servizio @(pausedSvc?.Type): @pausedWo.ServiceAddress</b> — WO @pausedWo.Id.Substring(0, Math.Min(8, pausedWo.Id.Length))</MudText>
-                                            <MudTextField T="string" Label="Nota per Ops"
+                                            @if (!string.IsNullOrEmpty(causa))
+                                            {
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary">@causa</MudText>
+                                            }
+                                            <MudTextField T="string" Label="Nota per cliente/Ops (es. giorno extra, supplemento pagamento, condizioni)"
                                                           Value="@GetInterventoNote(pwoId)"
                                                           ValueChanged="@((string v) => SetInterventoNote(pwoId, v))"
-                                                          Margin="Margin.Dense" Style="max-width:420px" />
+                                                          Margin="Margin.Dense" Style="max-width:480px" />
                                             <div class="d-flex gap-2 mt-1 flex-wrap">
-                                                <MudButton Size="Size.Small" Color="Color.Info" Variant="Variant.Filled"
-                                                           OnClick="@(() => ResolveWoRiprogramma(pausedWo))">Riprogramma</MudButton>
-                                                <MudButton Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled"
-                                                           OnClick="@(() => ResolveWoRiprendi(pausedWo))">Riprendi</MudButton>
+                                                @* Review 2026-04-17: Commercial ha 2 sole azioni. Il percorso operativo (ToSchedule vs InExecution) e' deciso da Ops. *@
                                                 <MudButton Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
-                                                           OnClick="@(() => ResolveWoChiudi(pausedWo))">Chiudi</MudButton>
+                                                           StartIcon="@Icons.Material.Filled.PlayArrow"
+                                                           OnClick="@(() => ResolveWoRiprendi(pausedWo))">Riprendi servizio</MudButton>
+                                                <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
+                                                           StartIcon="@Icons.Material.Filled.Cancel"
+                                                           OnClick="@(() => AnnullaWoDaPausa(pausedWo, pausedSvc))">Annulla preventivo</MudButton>
                                             </div>
+                                            @{
+                                                var parentQ = State.Deals.SelectMany(dd => dd.Quotations)
+                                                    .FirstOrDefault(qq => qq.Services.Any(sv => sv.Id == pausedSvc?.Id));
+                                                var siblings = parentQ?.Services.Count(sv =>
+                                                    sv.Status is not (WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.Cancelled
+                                                                    or WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.Completed)) ?? 0;
+                                            }
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                                                "Riprendi" = dai ok commerciale; Ops decide come proseguire (continua esecuzione o riprogramma).
+                                            </MudText>
+                                            @if (siblings > 1)
+                                            {
+                                                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-1" Style="font-size:0.75rem">
+                                                    <b>Annulla preventivo</b> cancella tutti @siblings i servizi della Quotation (inclusi quelli appaiati via MovingIds) e aggiorna lo stato di Quotation e Deal.
+                                                </MudAlert>
+                                            }
                                         </MudPaper>
                                     }
                                 }
@@ -279,10 +301,10 @@
                                 <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" Class="mb-2"
                                            OnClick="@(() => OpenQuotationForm(deal.Id))">Aggiungi Quotation</MudButton>
 
-                                @if (_showNewQuotation && _quotationDealId == deal.Id)
+                                @if (false && _showNewQuotation && _quotationDealId == deal.Id)
                                 {
                                     <MudCard Class="mb-3 pa-3 bc-commercial-pane" Outlined="true">
-                                        <MudText Typo="Typo.subtitle2" Class="mb-2">Nuova Quotation</MudText>
+                                        <MudText Typo="Typo.subtitle2" Class="mb-2">Nuova Quotation (DEPRECATO)</MudText>
 
                                         @* ═══════ SERVIZI ═══════ *@
                                         <MudPaper Class="quot-section svc-section mb-2" Outlined="true">
@@ -366,6 +388,9 @@
                                                                 }
                                                             </div>
                                                         }
+
+                                                        @* ── Oggetti stimati / volume dichiarato (DDD5 §2.1, review 2026-04-17) ── *@
+                                                        @RenderItemsBlock(svc)
                                                     </MudPaper>
                                                 }
                                                 <div class="d-flex gap-2 align-center flex-wrap">
@@ -549,33 +574,76 @@
                                                                     <MudText Typo="Typo.caption">Self-service (cliente al magazzino)</MudText>
                                                                 </MudSwitch>
                                                             </div>
+                                                            @* Data/Slot editabili finche' la Quotation non e' accettata (review 2026-04-17) *@
+                                                            var svcAvailableSlots = State.Slots
+                                                                .Where(sl => sl.CanBook(1) && (svc.ServiceAddress?.AreaId == null || sl.AreaId == svc.ServiceAddress.AreaId))
+                                                                .OrderBy(sl => sl.Date).ToList();
+                                                            <div class="d-flex gap-2 align-center flex-wrap mt-1">
+                                                                <MudSelect T="string" Value="@(svc.ScheduledSlot ?? "")"
+                                                                           ValueChanged="@((string slotId) => { var sl = State.Slots.FirstOrDefault(x => x.Id == slotId); if (sl != null) { svc.ScheduledDate = sl.Date; svc.ScheduledSlot = sl.Id; } else { svc.ScheduledDate = null; svc.ScheduledSlot = null; } State.NotifyStateChanged(); })"
+                                                                           Label="Data/slot" Dense="true" Margin="Margin.Dense" Style="max-width:260px">
+                                                                    @foreach (var sl in svcAvailableSlots.Take(20))
+                                                                    { <MudSelectItem T="string" Value="@sl.Id">@sl.Date.ToString("dd/MM ddd") (@($"{sl.MaxVolume - sl.UsedVolume:F0}") m³)</MudSelectItem> }
+                                                                </MudSelect>
+                                                                <MudSelect T="string" Value="@(svc.ServiceAddress?.AreaId ?? "")"
+                                                                           ValueChanged="@((string areaId) => { if (svc.ServiceAddress != null) svc.ServiceAddress = svc.ServiceAddress with { AreaId = areaId }; State.NotifyStateChanged(); })"
+                                                                           Label="Area" Dense="true" Margin="Margin.Dense" Style="max-width:140px">
+                                                                    @foreach (var area in State.Areas)
+                                                                    { <MudSelectItem T="string" Value="@area.Id">@area.Name</MudSelectItem> }
+                                                                </MudSelect>
+                                                            </div>
+                                                        }
+                                                        @* Pairing MovingIds (review 2026-04-17): multi-pairing supportato.
+                                                           Ritiro può pair N Consegne, Consegna può pair N Ritiri. *@
+                                                        @if (!q.IsAccepted)
+                                                        {
+                                                            WeTacoo.Domain.Commercial.Enums.ServiceBookedType? complType = svc.Type switch
+                                                            {
+                                                                WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro => WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Consegna,
+                                                                WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Consegna => WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro,
+                                                                _ => null
+                                                            };
+                                                            var complements = complType != null
+                                                                ? q.Services.Where(x => x.Type == complType && x.Id != svc.Id).ToList()
+                                                                : new List<WeTacoo.Domain.Commercial.Entities.ServiceBooked>();
+                                                            @if (complements.Count > 0)
+                                                            {
+                                                                <div class="d-flex gap-1 align-center mt-1 flex-wrap">
+                                                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                                        <MudIcon Icon="@Icons.Material.Filled.SyncAlt" Size="Size.Small" />
+                                                                        Appaia (trasloco) con (@(svc.Type == WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro ? "consegne" : "ritiri")):
+                                                                    </MudText>
+                                                                    @foreach (var compl in complements)
+                                                                    {
+                                                                        var complRef = compl;
+                                                                        var isPaired = svc.MovingIds.Contains(complRef.Id);
+                                                                        <MudChip T="string" Size="Size.Small"
+                                                                                 Color="@(isPaired ? Color.Primary : Color.Default)"
+                                                                                 Variant="@(isPaired ? Variant.Filled : Variant.Outlined)"
+                                                                                 OnClick="@(() => TogglePairing(svc, complRef))">
+                                                                            @complRef.Type @(complRef.ServiceAddress?.ZipCode ?? complRef.Id.Substring(0, Math.Min(6, complRef.Id.Length)))
+                                                                        </MudChip>
+                                                                    }
+                                                                </div>
+                                                            }
                                                         }
                                                         <div class="item-card-actions">
                                                             @if (svc.MovingIds.Count > 0)
                                                             {
-                                                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.SyncAlt">Trasloco (@svc.MovingIds.Count appaiato)</MudChip>
+                                                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.SyncAlt">Trasloco (@svc.MovingIds.Count appaiati)</MudChip>
                                                             }
                                                             @if (q.IsAccepted && svc.Status is not WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.Completed and not WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.Cancelled)
                                                             {
                                                                 <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
                                                                            OnClick="@(() => CancelServiceBooked(svc))">Annulla servizio</MudButton>
                                                             }
-                                                            @if (q.IsAccepted && svc.QuestionnaireId != null)
-                                                            {
-                                                                var svcQuest = State.Questionnaires.FirstOrDefault(qst => qst.Id == svc.QuestionnaireId);
-                                                                var svcWo = svc.WorkOrderId != null ? State.WorkOrders.FirstOrDefault(w => w.Id == svc.WorkOrderId) : null;
-                                                                @if (svcQuest != null && !svcQuest.IsVerified && svc.Status == WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.ToComplete)
-                                                                {
-                                                                    <MudButton Size="Size.Small" Color="Color.Info" Variant="Variant.Filled"
-                                                                               OnClick="@(() => { if (svcWo != null) VerifyQuestionnaireAndReady(svcQuest, svc, svcWo); })">Questionario completato</MudButton>
-                                                                }
-                                                            }
+                                                            @* Questionario unico per Quotation (review 2026-04-17): la compilazione e verifica vivono nella card
+                                                               Questionario a livello Quotation (sotto la sezione Piano Deposito). Il SB non ha UI dedicata. *@
                                                             @* "Richiedi sopralluogo" (DDD5 §4.8, review 2026-04-17).
                                                                Crea un WorkOrder Sopralluogo standalone (non un ServiceBooked) e porta il ServiceBooked in WaitingInspection.
-                                                               Visibile solo su Quotation gia' confermata (stato != Draft) e ServiceBooked in ToAccept.
+                                                               Disponibile in qualunque stato pre-finalizzazione (Draft, InProgress) e sul ServiceBooked in ToAccept.
                                                                Il completamento NON avviene dalla Quotation: e' automatico alla chiusura dello Shift (Execution). *@
-                                                            @if (q.Status != WeTacoo.Domain.Commercial.Enums.QuotationStatus.Draft
-                                                                 && svc.Status == WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.ToAccept
+                                                            @if (svc.Status == WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.ToAccept
                                                                  && string.IsNullOrEmpty(svc.InspectionId))
                                                             {
                                                                 @if (_inspectionDraftSvcId == svc.Id)
@@ -607,9 +675,26 @@
                                                                 var insLabel = insWo?.ScheduledDate != null
                                                                     ? $"Sopralluogo {insWo.ScheduledDate:dd/MM} — WO {svc.InspectionId.Substring(0, Math.Min(6, svc.InspectionId.Length))}"
                                                                     : $"Sopralluogo in corso — WO {svc.InspectionId.Substring(0, Math.Min(6, svc.InspectionId.Length))}";
+                                                                var slotEditable = insWo != null
+                                                                    && q.Status is WeTacoo.Domain.Commercial.Enums.QuotationStatus.Draft
+                                                                                or WeTacoo.Domain.Commercial.Enums.QuotationStatus.InProgress
+                                                                    && insWo.Status is WeTacoo.Domain.Operational.Enums.WorkOrderStatus.Completing
+                                                                                    or WeTacoo.Domain.Operational.Enums.WorkOrderStatus.ToSchedule;
                                                                 <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled" Icon="@Icons.Material.Filled.Visibility">
                                                                     @insLabel
                                                                 </MudChip>
+                                                                @if (slotEditable && insWo != null)
+                                                                {
+                                                                    var availableSlots = State.Slots
+                                                                        .Where(sl => sl.CanBook(1) && (svc.ServiceAddress?.AreaId == null || sl.AreaId == svc.ServiceAddress.AreaId))
+                                                                        .OrderBy(sl => sl.Date).ToList();
+                                                                    <MudSelect T="string" Value="@(insWo.ScheduledSlot ?? "")"
+                                                                               ValueChanged="@((string newSlotId) => ChangeInspectionSlot(insWo, newSlotId))"
+                                                                               Label="Cambia slot" Dense="true" Margin="Margin.Dense" Style="max-width:220px">
+                                                                        @foreach (var sl in availableSlots.Take(20))
+                                                                        { <MudSelectItem T="string" Value="@sl.Id">@sl.Date.ToString("dd/MM ddd")</MudSelectItem> }
+                                                                    </MudSelect>
+                                                                }
                                                                 <MudText Typo="Typo.caption" Class="ml-2">Conclusione automatica a chiusura Shift</MudText>
                                                             }
                                                             @if (!string.IsNullOrEmpty(svc.InspectionId) && svc.Status != WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.WaitingInspection)
@@ -619,15 +704,22 @@
                                                                 </MudChip>
                                                             }
                                                         </div>
+                                                        @* ── Oggetti stimati / volume dichiarato (DDD5 §2.1, review 2026-04-17) ── *@
+                                                        @RenderItemsBlock(svc)
                                                     </MudPaper>
                                                 }
                                                 @if (!q.IsAccepted)
                                                 {
-                                                    <MudSelect T="WeTacoo.Domain.Commercial.Enums.ServiceBookedType" Label="+ Aggiungi servizio" Dense="true" Style="max-width:180px" Margin="Margin.Dense"
-                                                               ValueChanged="@(t => { q.Services.Add(new WeTacoo.Domain.Commercial.Entities.ServiceBooked { Type = t, ServiceAddress = new WeTacoo.Domain.Commercial.ValueObjects.Address(_inlineSvcZip) }); _inlineSvcZip = ""; State.NotifyStateChanged(); })">
-                                                        @foreach (var t in Enum.GetValues<WeTacoo.Domain.Commercial.Enums.ServiceBookedType>())
-                                                        { <MudSelectItem T="WeTacoo.Domain.Commercial.Enums.ServiceBookedType" Value="@t">@t</MudSelectItem> }
-                                                    </MudSelect>
+                                                    <div class="d-flex gap-2 flex-wrap align-center">
+                                                        <MudSelect T="WeTacoo.Domain.Commercial.Enums.ServiceBookedType?" Label="+ Aggiungi servizio" Dense="true" Style="max-width:180px" Margin="Margin.Dense"
+                                                                   Value="@((WeTacoo.Domain.Commercial.Enums.ServiceBookedType?)null)"
+                                                                   ValueChanged="@((WeTacoo.Domain.Commercial.Enums.ServiceBookedType? t) => { if (t != null) { q.Services.Add(new WeTacoo.Domain.Commercial.Entities.ServiceBooked { Type = t.Value, ServiceAddress = new WeTacoo.Domain.Commercial.ValueObjects.Address(_inlineSvcZip) }); _inlineSvcZip = ""; State.NotifyStateChanged(); } })">
+                                                            @foreach (var t in Enum.GetValues<WeTacoo.Domain.Commercial.Enums.ServiceBookedType>())
+                                                            { <MudSelectItem T="WeTacoo.Domain.Commercial.Enums.ServiceBookedType?" Value="@((WeTacoo.Domain.Commercial.Enums.ServiceBookedType?)t)">@t</MudSelectItem> }
+                                                        </MudSelect>
+                                                        <MudButton Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined"
+                                                                   OnClick="@(() => AddTraslocoToExistingQuotation(q))">+ Trasloco (Ritiro+Consegna)</MudButton>
+                                                    </div>
                                                 }
                                             </div>
                                         </MudPaper>
@@ -667,11 +759,18 @@
                                                 }
                                                 @if (!q.IsAccepted)
                                                 {
-                                                    <MudSelect T="string" Label="+ Aggiungi prodotto" Dense="true" Style="max-width:260px" Margin="Margin.Dense"
-                                                               ValueChanged="@(id => { _inlineProductId = id; AddProductToExistingQuotation(q); })">
-                                                        @foreach (var pt in State.ProductTemplates)
-                                                        { <MudSelectItem T="string" Value="@pt.Id">@pt.Name (@pt.BasePrice.ToString("C"))</MudSelectItem> }
-                                                    </MudSelect>
+                                                    <div class="d-flex gap-2 flex-wrap align-center">
+                                                        <MudSelect T="string" Label="+ Aggiungi prodotto" Dense="true" Style="max-width:260px" Margin="Margin.Dense"
+                                                                   Value="@("")"
+                                                                   ValueChanged="@((string id) => { if (!string.IsNullOrEmpty(id)) { _inlineProductId = id; AddProductToExistingQuotation(q); } })">
+                                                            @foreach (var pt in State.ProductTemplates)
+                                                            { <MudSelectItem T="string" Value="@pt.Id">@pt.Name (@pt.BasePrice.ToString("C"))</MudSelectItem> }
+                                                        </MudSelect>
+                                                        <MudTextField T="string" @bind-Value="_customProductName" Label="Nome custom" Style="max-width:180px" Margin="Margin.Dense" />
+                                                        <MudNumericField T="decimal" @bind-Value="_customProductPrice" Label="Prezzo" Style="max-width:120px" Margin="Margin.Dense" Min="0" Step="5m" />
+                                                        <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary"
+                                                                       OnClick="@(() => AddCustomProductToExistingQuotation(q))" />
+                                                    </div>
                                                 }
                                             </div>
                                         </MudPaper>
@@ -722,6 +821,42 @@
                                         else if (q.DraftPlans.Count == 0 && !q.IsAccepted)
                                         {
                                             <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">Servizio aggiuntivo su piano attivo — nessun nuovo piano necessario.</MudAlert>
+                                        }
+
+                                        @* ═══════ QUESTIONARIO CARD ═══════ (review 2026-04-17: unico per Quotation) *@
+                                        @if (q.IsAccepted && q.QuestionnaireId != null)
+                                        {
+                                            var quotQuest = State.Questionnaires.FirstOrDefault(qst => qst.Id == q.QuestionnaireId);
+                                            @if (quotQuest != null)
+                                            {
+                                                <MudPaper Class="quot-section mb-2" Outlined="true" Style="border-left: 3px solid var(--mud-palette-info);">
+                                                    <div class="quot-section-header">
+                                                        <MudIcon Icon="@Icons.Material.Filled.QuestionAnswer" Size="Size.Small" />
+                                                        <span class="quot-section-title">Questionario (unico per Quotation)</span>
+                                                        @if (quotQuest.IsVerified) { <MudChip T="string" Size="Size.Small" Color="Color.Success">Verificato</MudChip> }
+                                                        else if (quotQuest.IsCompleted) { <MudChip T="string" Size="Size.Small" Color="Color.Info">Compilato — da verificare</MudChip> }
+                                                        else { <MudChip T="string" Size="Size.Small" Color="Color.Warning">@quotQuest.Questions.Count(qq => qq.IsCompleted)/@quotQuest.Questions.Count compilate</MudChip> }
+                                                    </div>
+                                                    <div class="quot-section-body">
+                                                        @if (quotQuest.Questions.Count == 0)
+                                                        {
+                                                            <MudText Typo="Typo.caption" Color="Color.Secondary">Nessuna domanda attiva.</MudText>
+                                                        }
+                                                        else
+                                                        {
+                                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                                @quotQuest.Questions.Count domande — compilazione in sito durante sopralluogo o manuale su questa scheda.
+                                                            </MudText>
+                                                        }
+                                                        @if (!quotQuest.IsVerified)
+                                                        {
+                                                            <MudButton Size="Size.Small" Color="Color.Success" Variant="Variant.Filled" Class="mt-1"
+                                                                       StartIcon="@Icons.Material.Filled.CheckCircle"
+                                                                       OnClick="@(() => VerifyQuotationQuestionnaire(q, quotQuest))">Questionario completato</MudButton>
+                                                        }
+                                                    </div>
+                                                </MudPaper>
+                                            }
                                         }
 
                                         @* Flusso stati Quotation: Bozza -> In lavorazione -> Finalizzata -> Accettata (via client) *@
@@ -906,6 +1041,21 @@
                                         @if (wo.Status == WeTacoo.Domain.Operational.Enums.WorkOrderStatus.ToSchedule)
                                         {
                                             <MudChip T="string" Size="Size.Small" Color="Color.Info">Da programmare — crea Mission nel Planning</MudChip>
+                                            @if (_nonProgrammabileWoId == wo.Id)
+                                            {
+                                                <MudTextField T="string" Value="@_nonProgrammabileMotivo"
+                                                              ValueChanged="@((string v) => _nonProgrammabileMotivo = v)"
+                                                              Label="Motivo non programmabile (→ Commercial decide)" Margin="Margin.Dense" Style="max-width:360px" />
+                                                <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Filled"
+                                                           OnClick="@(() => ConfirmNonProgrammabile(wo))">Conferma → Commercial</MudButton>
+                                                <MudButton Size="Size.Small" Variant="Variant.Text"
+                                                           OnClick="@(() => { _nonProgrammabileWoId = null; _nonProgrammabileMotivo = ""; })">Annulla</MudButton>
+                                            }
+                                            else
+                                            {
+                                                <MudButton Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined"
+                                                           OnClick="@(() => { _nonProgrammabileWoId = wo.Id; _nonProgrammabileMotivo = ""; })">Non programmabile → Commercial</MudButton>
+                                            }
                                         }
                                         @if (wo.Status == WeTacoo.Domain.Operational.Enums.WorkOrderStatus.Scheduled)
                                         {
@@ -926,7 +1076,20 @@
                                         }
                                         @if (wo.Status == WeTacoo.Domain.Operational.Enums.WorkOrderStatus.Paused)
                                         {
-                                            <MudChip T="string" Size="Size.Small" Color="Color.Error">In pausa — vedi Deal per la decisione Commercial</MudChip>
+                                            @if (wo.PausedForCommercial)
+                                            {
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Error">In pausa — vedi Deal per decisione Commercial</MudChip>
+                                            }
+                                            else
+                                            {
+                                                @* Gestione Ops interna: azioni Riprogramma/Riprendi direttamente sul WorkOrder (review 2026-04-17) *@
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Warning">In pausa — gestione Ops</MudChip>
+                                                var opsShiftForWo = State.Shifts.FirstOrDefault(s => s.ServiceEntries.Any(se => se.ServiceId == wo.Id));
+                                                <MudButton Size="Size.Small" Color="Color.Info" Variant="Variant.Filled"
+                                                           OnClick="@(() => ResolveOpsInternalRiprogramma(wo, opsShiftForWo))">Riprogramma</MudButton>
+                                                <MudButton Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
+                                                           OnClick="@(() => ResolveOpsInternalRiprendi(wo, opsShiftForWo))">Riprendi</MudButton>
+                                            }
                                         }
                                         @if (wo.Status == WeTacoo.Domain.Operational.Enums.WorkOrderStatus.ToVerify)
                                         {
@@ -1084,6 +1247,10 @@
                                     }
                                     else
                                     {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">
+                                            <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" />
+                                            I WO Operational (trasferimenti/trasbordi) e Sopralluogo sono <b>sempre inclusi</b>, indipendentemente dal cliente selezionato.
+                                        </MudText>
                                         <MudPaper Class="pa-2 mb-3" Outlined="true">
                                             @foreach (var wo in assignableWos)
                                             {
@@ -1091,11 +1258,13 @@
                                                 var existingMissionCount = State.Plannings.SelectMany(p => p.Missions).Count(m => !m.IsCancelled && m.ServiceRefs.Any(sr => sr.ServiceId == woId));
                                                 var sameDay = wo.ScheduledDate?.Date == _missionDate?.Date;
                                                 var isOpsWo = wo.Type == WeTacoo.Domain.Operational.Enums.WorkOrderType.Operational;
-                                                <div class="d-flex align-center gap-2">
+                                                var isSopralluogo = wo.Type == WeTacoo.Domain.Operational.Enums.WorkOrderType.Sopralluogo;
+                                                <div class="d-flex align-center gap-2" style="@((isOpsWo || isSopralluogo) ? "background:#fff9e6;padding:2px;border-radius:3px;" : "")">
                                                     <MudCheckBox T="bool" Dense="true" Size="Size.Small"
                                                                  Value="@_selectedNewMissionWoIds.Contains(woId)"
                                                                  ValueChanged="@((bool ck) => { if (ck) _selectedNewMissionWoIds.Add(woId); else _selectedNewMissionWoIds.Remove(woId); StateHasChanged(); })" />
                                                     @if (isOpsWo) { <MudChip T="string" Size="Size.Small" Color="Color.Warning">OPS</MudChip> }
+                                                    else if (isSopralluogo) { <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.Visibility">SOPR</MudChip> }
                                                     <MudChip T="string" Size="Size.Small" Color="@(sameDay ? Color.Info : Color.Default)">@wo.ServiceType.Type</MudChip>
                                                     @if (wo.ServiceType.IsAutonomous) { <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.Store">Autonomo</MudChip> }
                                                     <MudText Typo="Typo.caption">@(wo.ServiceAddress ?? "") — data prog.: @(wo.ScheduledDate?.ToString("dd/MM") ?? "—") — @wo.Status</MudText>
@@ -1193,6 +1362,145 @@
                         }
                     }
 
+                    @* MISSION OPERATIVE — sopra Execution/Financial (review 2026-04-17) *@
+                    var opsMissions = State.Plannings
+                        .SelectMany(p => p.Missions.Select(m => new { Planning = p, Mission = m }))
+                        .Where(x => x.Mission.ServiceRefs.All(sr =>
+                            State.WorkOrders.FirstOrDefault(w => w.Id == sr.ServiceId)?.Type == WeTacoo.Domain.Operational.Enums.WorkOrderType.Operational))
+                        .Where(x => x.Mission.ServiceRefs.Count > 0)
+                        .OrderBy(x => x.Planning.Date)
+                        .ToList();
+                    var opsWosToPlan = State.WorkOrders.Where(w => w.Type == WeTacoo.Domain.Operational.Enums.WorkOrderType.Operational
+                        && w.Status is WeTacoo.Domain.Operational.Enums.WorkOrderStatus.ToSchedule
+                            or WeTacoo.Domain.Operational.Enums.WorkOrderStatus.Scheduled).ToList();
+                    @if (opsMissions.Count > 0 || opsWosToPlan.Count > 0)
+                    {
+                        <MudDivider Class="my-3" />
+                        <MudExpansionPanels>
+                            <MudExpansionPanel>
+                                <TitleContent>
+                                    <div class="d-flex align-center gap-2">
+                                        <MudIcon Icon="@Icons.Material.Filled.SwapHoriz" Size="Size.Small" Color="Color.Warning" />
+                                        <MudText Typo="Typo.subtitle1"><b>Mission Operative</b></MudText>
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">@opsMissions.Count mission</MudChip>
+                                        @if (opsWosToPlan.Count > 0) { <MudChip T="string" Size="Size.Small" Color="Color.Error">@opsWosToPlan.Count WO da pianificare</MudChip> }
+                                    </div>
+                                </TitleContent>
+                                <ChildContent>
+                                    @if (opsWosToPlan.Count > 0)
+                                    {
+                                        <MudText Typo="Typo.caption" Class="mb-1"><b>WO operativi da pianificare</b> (non ancora in Mission)</MudText>
+                                        @foreach (var w in opsWosToPlan.Where(w => !opsMissions.Any(om => om.Mission.ServiceRefs.Any(sr => sr.ServiceId == w.Id))))
+                                        {
+                                            <div class="d-flex align-center gap-2 mb-1">
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Warning">OPS</MudChip>
+                                                <MudChip T="string" Size="Size.Small">@w.ServiceType.Type</MudChip>
+                                                <MudText Typo="Typo.caption">@(w.ServiceAddress ?? "") — Area: @(State.Areas.FirstOrDefault(a => a.Id == w.ServiceType.AreaId)?.Name ?? "—") — @w.Status</MudText>
+                                            </div>
+                                        }
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2"><i>Per pianificarli: sezione Planning sopra → la lista Mission li include con badge OPS.</i></MudText>
+                                    }
+                                    @if (opsMissions.Count == 0)
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Nessuna Mission operativa.</MudText>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var om in opsMissions)
+                                        {
+                                            var hasShift = State.Shifts.Any(s => s.MissionId == om.Mission.Id);
+                                            var opsShift = State.Shifts.FirstOrDefault(s => s.MissionId == om.Mission.Id);
+                                            <MudPaper Class="pa-2 mb-2" Outlined="true" Style="border-left: 3px solid var(--mud-palette-warning);">
+                                                <div class="d-flex align-center gap-2 flex-wrap">
+                                                    <MudChip T="string" Size="Size.Small" Color="@(om.Mission.IsCancelled ? Color.Error : hasShift ? Color.Success : Color.Warning)">
+                                                        @(om.Mission.IsCancelled ? "Cancelled" : hasShift ? "Confermata" : "Non confermata")
+                                                    </MudChip>
+                                                    <MudText Typo="Typo.caption"><b>@om.Planning.Date.ToString("dd/MM/yyyy")</b> | Mission @om.Mission.Id.Substring(0, Math.Min(8, om.Mission.Id.Length)) | @om.Mission.TimeSlot</MudText>
+                                                </div>
+                                                <MudText Typo="Typo.caption">Servizi:
+                                                @foreach (var sr in om.Mission.ServiceRefs)
+                                                {
+                                                    var srWo = State.WorkOrders.FirstOrDefault(w => w.Id == sr.ServiceId);
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-1">@(srWo?.ServiceType.Type.ToString() ?? "?") (@sr.VolumePercentage%)</MudChip>
+                                                }
+                                                </MudText>
+                                                @if (!om.Mission.IsCancelled && !hasShift)
+                                                {
+                                                    <div class="d-flex gap-2 mt-1">
+                                                        <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
+                                                                   OnClick="@(() => ConfirmMissionShift(om.Planning, om.Mission))">Conferma → Shift</MudButton>
+                                                        <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
+                                                                   OnClick="@(() => DeleteMission(om.Planning, om.Mission))">Elimina</MudButton>
+                                                    </div>
+                                                }
+                                                @if (opsShift != null)
+                                                {
+                                                    <div class="mt-2">
+                                                        <MudText Typo="Typo.caption"><b>Shift</b> @opsShift.Id.Substring(0, Math.Min(8, opsShift.Id.Length)) —
+                                                            <MudChip T="string" Size="Size.Small" Color="@ShiftColor(opsShift.Status)">@opsShift.Status</MudChip>
+                                                        </MudText>
+                                                        <div class="d-flex gap-2 mt-1 flex-wrap">
+                                                            @if (opsShift.Status == "Created")
+                                                            {
+                                                                <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
+                                                                           OnClick="@(() => AvviaShift(opsShift))">Avvia</MudButton>
+                                                            }
+                                                            @if (opsShift.Status == "InProgress")
+                                                            {
+                                                                <MudButton Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled"
+                                                                           OnClick="@(() => SimulaEsecuzione(opsShift))">Simula</MudButton>
+                                                                <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
+                                                                           OnClick="@(() => SegnalaProblema(opsShift, forCommercial: true))">Problema → Commercial</MudButton>
+                                                                <MudButton Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined"
+                                                                           OnClick="@(() => SegnalaProblema(opsShift, forCommercial: false))">Problema → gestisco Ops</MudButton>
+                                                            }
+                                                            @if (opsShift.Status == "Paused")
+                                                            {
+                                                                <MudChip T="string" Size="Size.Small" Color="Color.Warning">Shift in pausa — vedi WorkOrder per azioni</MudChip>
+                                                            }
+                                                            @if (opsShift.Status == "InProgress" && opsShift.ServiceEntries.All(se => se.Completed))
+                                                            {
+                                                                <MudButton Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
+                                                                           OnClick="@(() => CompletaShift(opsShift))">Completa Shift</MudButton>
+                                                            }
+                                                        </div>
+                                                        @foreach (var se in opsShift.ServiceEntries)
+                                                        {
+                                                            <div class="d-flex align-center gap-2 mt-1">
+                                                                <MudChip T="string" Size="Size.Small" Color="@(se.Completed ? Color.Success : Color.Default)">@(se.Completed ? "Completed" : "Da fare")</MudChip>
+                                                                <MudText Typo="Typo.caption">@se.Type — @(se.ServiceId.Substring(0, Math.Min(8, se.ServiceId.Length)))</MudText>
+                                                                @if (se.ReferenceVolume > 0 || se.ReferenceItems.Count > 0)
+                                                                {
+                                                                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.Inventory">
+                                                                        @se.ReferenceVolume.ToString("F2") m³@(se.ReferenceItems.Count > 0 ? $" — {se.ReferenceItems.Sum(i => i.Quantity)} pz" : "")
+                                                                    </MudChip>
+                                                                }
+                                                                @if (opsShift.Status == "InProgress" && !se.Completed)
+                                                                {
+                                                                    <MudButton Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
+                                                                               OnClick="@(() => CompleteServiceEntry(opsShift, se))">Completa</MudButton>
+                                                                }
+                                                            </div>
+                                                            @if (se.ReferenceItems.Count > 0)
+                                                            {
+                                                                <div class="d-flex gap-1 flex-wrap ml-4 mb-1">
+                                                                    @foreach (var refIt in se.ReferenceItems)
+                                                                    {
+                                                                        <MudChip T="string" Size="Size.Small" Color="Color.Default">@refIt.Quantity × @refIt.TemplateName</MudChip>
+                                                                    }
+                                                                </div>
+                                                            }
+                                                        }
+                                                    </div>
+                                                }
+                                            </MudPaper>
+                                        }
+                                    }
+                                </ChildContent>
+                            </MudExpansionPanel>
+                        </MudExpansionPanels>
+                    }
+
                     @* ── 5. SHIFTS ── *@
                     @if (GetLeadShifts().Any())
                     {
@@ -1243,12 +1551,14 @@
                                         }
                                         @if (shift.Status == "Paused")
                                         {
-                                            <MudChip T="string" Size="Size.Small" Color="Color.Error">In pausa — attendo decisione Commercial</MudChip>
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Shift in pausa — vedi WorkOrder per azioni (Ops o Commercial)</MudChip>
                                         }
                                         @if (shift.Status == "InProgress")
                                         {
                                             <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
-                                                       OnClick="@(() => SegnalaProblema(shift))">Segnala Problema → In Pausa</MudButton>
+                                                       OnClick="@(() => SegnalaProblema(shift, forCommercial: true))">Problema → Commercial</MudButton>
+                                            <MudButton Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined"
+                                                       OnClick="@(() => SegnalaProblema(shift, forCommercial: false))">Problema → gestisco Ops</MudButton>
                                             @if (shift.ServiceEntries.All(se => se.Completed) && shift.ServiceEntries.Count > 0)
                                             {
                                                 <MudButton Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
@@ -1311,130 +1621,6 @@
                 }
             }
 
-            @* ══════════════ MISSION OPERATIVE — collassabile, sotto tutto il contenuto cliente ══════════════ *@
-            @{
-                var opsMissions = State.Plannings
-                    .SelectMany(p => p.Missions.Select(m => new { Planning = p, Mission = m }))
-                    .Where(x => x.Mission.ServiceRefs.All(sr =>
-                        State.WorkOrders.FirstOrDefault(w => w.Id == sr.ServiceId)?.Type == WeTacoo.Domain.Operational.Enums.WorkOrderType.Operational))
-                    .Where(x => x.Mission.ServiceRefs.Count > 0)
-                    .OrderBy(x => x.Planning.Date)
-                    .ToList();
-                var opsWosToPlan = State.WorkOrders.Where(w => w.Type == WeTacoo.Domain.Operational.Enums.WorkOrderType.Operational
-                    && w.Status is WeTacoo.Domain.Operational.Enums.WorkOrderStatus.ToSchedule
-                        or WeTacoo.Domain.Operational.Enums.WorkOrderStatus.Scheduled).ToList();
-            }
-            @if (opsMissions.Count > 0 || opsWosToPlan.Count > 0)
-            {
-                <MudDivider Class="my-3" />
-                <MudExpansionPanels>
-                    <MudExpansionPanel>
-                        <TitleContent>
-                            <div class="d-flex align-center gap-2">
-                                <MudIcon Icon="@Icons.Material.Filled.SwapHoriz" Size="Size.Small" Color="Color.Warning" />
-                                <MudText Typo="Typo.subtitle1"><b>Mission Operative</b></MudText>
-                                <MudChip T="string" Size="Size.Small" Color="Color.Warning">@opsMissions.Count mission</MudChip>
-                                @if (opsWosToPlan.Count > 0) { <MudChip T="string" Size="Size.Small" Color="Color.Error">@opsWosToPlan.Count WO da pianificare</MudChip> }
-                            </div>
-                        </TitleContent>
-                        <ChildContent>
-                            @if (opsWosToPlan.Count > 0)
-                            {
-                                <MudText Typo="Typo.caption" Class="mb-1"><b>WO operativi da pianificare</b> (non ancora in Mission)</MudText>
-                                @foreach (var w in opsWosToPlan.Where(w => !opsMissions.Any(om => om.Mission.ServiceRefs.Any(sr => sr.ServiceId == w.Id))))
-                                {
-                                    <div class="d-flex align-center gap-2 mb-1">
-                                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">OPS</MudChip>
-                                        <MudChip T="string" Size="Size.Small">@w.ServiceType.Type</MudChip>
-                                        <MudText Typo="Typo.caption">@(w.ServiceAddress ?? "") — Area: @(State.Areas.FirstOrDefault(a => a.Id == w.ServiceType.AreaId)?.Name ?? "—") — @w.Status</MudText>
-                                    </div>
-                                }
-                                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2"><i>Per pianificarli: sezione Planning sopra → la lista Mission li include con badge OPS.</i></MudText>
-                            }
-                            @if (opsMissions.Count == 0)
-                            {
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">Nessuna Mission operativa.</MudText>
-                            }
-                            else
-                            {
-                                @foreach (var om in opsMissions)
-                                {
-                                    var hasShift = State.Shifts.Any(s => s.MissionId == om.Mission.Id);
-                                    var opsShift = State.Shifts.FirstOrDefault(s => s.MissionId == om.Mission.Id);
-                                    <MudPaper Class="pa-2 mb-2" Outlined="true" Style="border-left: 3px solid var(--mud-palette-warning);">
-                                        <div class="d-flex align-center gap-2 flex-wrap">
-                                            <MudChip T="string" Size="Size.Small" Color="@(om.Mission.IsCancelled ? Color.Error : hasShift ? Color.Success : Color.Warning)">
-                                                @(om.Mission.IsCancelled ? "Cancelled" : hasShift ? "Confermata" : "Non confermata")
-                                            </MudChip>
-                                            <MudText Typo="Typo.caption"><b>@om.Planning.Date.ToString("dd/MM/yyyy")</b> | Mission @om.Mission.Id.Substring(0, Math.Min(8, om.Mission.Id.Length)) | @om.Mission.TimeSlot</MudText>
-                                        </div>
-                                        <MudText Typo="Typo.caption">Servizi:
-                                        @foreach (var sr in om.Mission.ServiceRefs)
-                                        {
-                                            var srWo = State.WorkOrders.FirstOrDefault(w => w.Id == sr.ServiceId);
-                                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-1">@(srWo?.ServiceType.Type.ToString() ?? "?") (@sr.VolumePercentage%)</MudChip>
-                                        }
-                                        </MudText>
-                                        @if (!om.Mission.IsCancelled && !hasShift)
-                                        {
-                                            <div class="d-flex gap-2 mt-1">
-                                                <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
-                                                           OnClick="@(() => ConfirmMissionShift(om.Planning, om.Mission))">Conferma → Shift</MudButton>
-                                                <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
-                                                           OnClick="@(() => DeleteMission(om.Planning, om.Mission))">Elimina</MudButton>
-                                            </div>
-                                        }
-                                        @* Azioni Shift (come per missioni normali) *@
-                                        @if (opsShift != null)
-                                        {
-                                            <div class="mt-2">
-                                                <MudText Typo="Typo.caption"><b>Shift</b> @opsShift.Id.Substring(0, Math.Min(8, opsShift.Id.Length)) —
-                                                    <MudChip T="string" Size="Size.Small" Color="@ShiftColor(opsShift.Status)">@opsShift.Status</MudChip>
-                                                </MudText>
-                                                <div class="d-flex gap-2 mt-1 flex-wrap">
-                                                    @if (opsShift.Status == "Created")
-                                                    {
-                                                        <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
-                                                                   OnClick="@(() => AvviaShift(opsShift))">Avvia</MudButton>
-                                                    }
-                                                    @if (opsShift.Status == "InProgress")
-                                                    {
-                                                        <MudButton Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled"
-                                                                   OnClick="@(() => SimulaEsecuzione(opsShift))">Simula</MudButton>
-                                                        <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
-                                                                   OnClick="@(() => SegnalaProblema(opsShift))">Segnala Problema</MudButton>
-                                                    }
-                                                    @if (opsShift.Status == "Paused")
-                                                    {
-                                                        <MudChip T="string" Size="Size.Small" Color="Color.Error">In pausa — attendo decisione Commercial</MudChip>
-                                                    }
-                                                    @if (opsShift.Status == "InProgress" && opsShift.ServiceEntries.All(se => se.Completed))
-                                                    {
-                                                        <MudButton Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
-                                                                   OnClick="@(() => CompletaShift(opsShift))">Completa Shift</MudButton>
-                                                    }
-                                                </div>
-                                                @foreach (var se in opsShift.ServiceEntries)
-                                                {
-                                                    <div class="d-flex align-center gap-2 mt-1">
-                                                        <MudChip T="string" Size="Size.Small" Color="@(se.Completed ? Color.Success : Color.Default)">@(se.Completed ? "Completed" : "Da fare")</MudChip>
-                                                        <MudText Typo="Typo.caption">@se.Type — @(se.ServiceId.Substring(0, Math.Min(8, se.ServiceId.Length)))</MudText>
-                                                        @if (opsShift.Status == "InProgress" && !se.Completed)
-                                                        {
-                                                            <MudButton Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
-                                                                       OnClick="@(() => CompleteServiceEntry(opsShift, se))">Completa</MudButton>
-                                                        }
-                                                    </div>
-                                                }
-                                            </div>
-                                        }
-                                    </MudPaper>
-                                }
-                            }
-                        </ChildContent>
-                    </MudExpansionPanel>
-                </MudExpansionPanels>
-            }
         </MudPaper>
     </MudItem>
 
@@ -1681,19 +1867,22 @@
     // ══════════════════════════════════════════════════════════════
     // QUOTATION ACTIONS
     // ══════════════════════════════════════════════════════════════
+    /// Crea immediatamente una Quotation Draft nel Deal (review 2026-04-17): l'utente
+    /// modifica poi l'entita' live nella lista Quotations esistente. Non piu' form temporaneo.
     private void OpenQuotationForm(string dealId)
     {
-        _quotationDealId = dealId;
-        _showNewQuotation = true;
-        _quotationProducts = [];
-        _quotationServices = [];
-        _selectedProductTemplateId = null;
-        _newQuotSvcType = null;
-        _newQuotSvcZip = "";
-        _newQuotPlanDesc = "Piano deposito";
-        _newQuotPlanFee = 89.90m;
-        _newQuotPlanM3 = 10;
-        _includePlan = false;
+        var deal = State.Deals.FirstOrDefault(d => d.Id == dealId);
+        if (deal == null) return;
+        var q = new WeTacoo.Domain.Commercial.Entities.Quotation
+        {
+            DealId = dealId,
+            IsInitial = deal.Quotations.Count == 0
+        };
+        deal.Quotations.Add(q);
+        if (deal.Status == WeTacoo.Domain.Commercial.Enums.DealStatus.Qualified)
+            deal.EnterNegotiation();
+        Snackbar.Add($"Quotation Draft creata — aggiungi servizi, prodotti, piano", Severity.Success);
+        State.NotifyStateChanged();
     }
 
     private void AddServiceToNewQuotation()
@@ -1731,6 +1920,145 @@
     // ── Stato draft richiesta sopralluogo (DDD5 §4.8 review 2026-04-17) ──
     private string? _inspectionDraftSvcId;
     private string? _inspectionDraftSlotId;
+
+    /// Cambia slot di un WO Sopralluogo gia' creato, finche' la Quotation e' in Draft/InProgress e il WO non e' ancora Scheduled.
+    private void ChangeInspectionSlot(WeTacoo.Domain.Operational.WorkOrder insWo, string newSlotId)
+    {
+        if (string.IsNullOrEmpty(newSlotId)) return;
+        var newSlot = State.Slots.FirstOrDefault(s => s.Id == newSlotId);
+        if (newSlot == null) return;
+        insWo.ScheduledSlot = newSlot.Id;
+        insWo.ScheduledDate = newSlot.Date;
+        newSlot.Book(1);
+        Snackbar.Add($"Sopralluogo WO {insWo.Id.Substring(0, 6)} riprogrammato al {newSlot.Date:dd/MM}", Severity.Info);
+        State.NotifyStateChanged();
+    }
+
+    /// Seleziona un template e lo aggiunge immediatamente alla lista con quantita' = 1.
+    /// Chiamato dal ValueChanged del select template.
+    private void OnTemplateSelected(WeTacoo.Domain.Commercial.Entities.ServiceBooked svc, string? tplId)
+    {
+        if (string.IsNullOrEmpty(tplId)) return;
+        var tpl = State.ObjectTemplates.FirstOrDefault(t => t.Id == tplId);
+        if (tpl == null) return;
+        svc.AddItem(tpl.Id, tpl.Name, 1, tpl.DefaultVolume);
+        State.NotifyStateChanged();
+    }
+
+    private void IncrementItemQty(WeTacoo.Domain.Commercial.Entities.ServiceBooked svc, WeTacoo.Domain.Commercial.Entities.ServiceBookedItem item, int delta)
+    {
+        var current = svc.Items.FirstOrDefault(i => i.ObjectTemplateId == item.ObjectTemplateId);
+        if (current == null) return;
+        svc.UpdateItemQuantity(item.ObjectTemplateId, current.Quantity + delta);
+        State.NotifyStateChanged();
+    }
+
+    /// Switch di modalita' tra Oggetti e Volume dichiarato. Il passaggio azzera i dati dell'altra modalita'
+    /// (coerente con la mutua esclusione imposta dal dominio su ServiceBooked).
+    private void SwitchItemMode(WeTacoo.Domain.Commercial.Entities.ServiceBooked svc, string? mode)
+    {
+        if (mode == "volume")
+            svc.SetDeclaredVolume(0m); // svuota Items e attiva modalita' volume
+        else
+            svc.SetDeclaredVolume(null); // disattiva modalita' volume, modalita' items di default
+        State.NotifyStateChanged();
+    }
+
+    /// Blocco renderizzabile "Oggetti stimati / Volume dichiarato" per ServiceBooked.
+    /// UI compatta con toggle in alto: una sola sezione visibile alla volta. Passaggio azzera l'altra modalita'.
+    /// Editabile solo finche' svc.Status == ToAccept (DDD5 §10d invariante dati venduti immutabili).
+    private RenderFragment RenderItemsBlock(WeTacoo.Domain.Commercial.Entities.ServiceBooked svc) => __builder =>
+    {
+        var editable = svc.Status == WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.ToAccept;
+        var modeVolume = svc.DeclaredVolume != null;
+        var currentMode = modeVolume ? "volume" : "items";
+
+    <div class="mt-2 pa-2" style="background:#fafafa;border:1px solid #ddd;border-radius:6px">
+        <div class="d-flex align-center gap-2 flex-wrap mb-1">
+            <MudText Typo="Typo.caption" Class="d-flex align-center gap-1">
+                <MudIcon Icon="@Icons.Material.Filled.Inventory" Size="Size.Small" />
+                <b>Volume stimato</b>
+                <span class="ms-1" style="font-weight:600;color:#1976d2">@svc.EstimatedVolume.ToString("F2") m³</span>
+            </MudText>
+            @if (editable)
+            {
+                <MudToggleGroup T="string" Value="@currentMode" ValueChanged="@((string v) => SwitchItemMode(svc, v))"
+                                SelectionMode="SelectionMode.SingleSelection" Size="Size.Small"
+                                Color="Color.Primary" Dense="true">
+                    <MudToggleItem Value="@("items")" Text="Oggetti" />
+                    <MudToggleItem Value="@("volume")" Text="Volume" />
+                </MudToggleGroup>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Style="font-size:0.7rem">(il passaggio azzera i dati dell'altra modalita')</MudText>
+            }
+            else
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">Immutabile</MudChip>
+            }
+        </div>
+
+        @if (currentMode == "items")
+        {
+            @* ── Modalita' Oggetti ── *@
+            @if (svc.Items.Count > 0)
+            {
+                <div class="d-flex gap-1 flex-wrap mb-1">
+                    @foreach (var it in svc.Items.ToList())
+                    {
+                        var item = it;
+                        <MudPaper Outlined="true" Class="d-flex align-center gap-1 px-1 py-0" Style="border-radius:16px;background:#e3f2fd">
+                            <MudText Typo="Typo.caption" Style="min-width:120px">@item.TemplateName</MudText>
+                            @if (editable)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Remove" Size="Size.Small"
+                                               OnClick="@(() => IncrementItemQty(svc, item, -1))" />
+                            }
+                            <MudText Typo="Typo.caption" Style="font-weight:700;min-width:24px;text-align:center">@item.Quantity</MudText>
+                            @if (editable)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small"
+                                               OnClick="@(() => IncrementItemQty(svc, item, +1))" />
+                            }
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">(@item.TotalVolume.ToString("F2") m³)</MudText>
+                            @if (editable)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error"
+                                               OnClick="@(() => { svc.RemoveItem(item.ObjectTemplateId); State.NotifyStateChanged(); })" />
+                            }
+                        </MudPaper>
+                    }
+                </div>
+            }
+            @if (editable)
+            {
+                <MudSelect T="string" Value="@("")"
+                           ValueChanged="@((string v) => OnTemplateSelected(svc, v))"
+                           Label="Aggiungi oggetto dal catalogo" Style="min-width:280px" Margin="Margin.Dense" Dense="true">
+                    @foreach (var tpl in State.ObjectTemplates.OrderBy(t => t.Room).ThenBy(t => t.Name))
+                    { <MudSelectItem T="string" Value="@tpl.Id">@tpl.Name (@tpl.DefaultVolume.ToString("F2") m³)@(tpl.Room != null ? $" — {tpl.Room}" : "")</MudSelectItem> }
+                </MudSelect>
+            }
+            else if (svc.Items.Count == 0)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary">—</MudText>
+            }
+        }
+        else
+        {
+            @* ── Modalita' Volume dichiarato ── *@
+            @if (editable)
+            {
+                <MudNumericField T="decimal?" Value="svc.DeclaredVolume"
+                                 ValueChanged="@((decimal? v) => { svc.SetDeclaredVolume(v ?? 0m); State.NotifyStateChanged(); })"
+                                 Label="Volume (m³)" Style="max-width:180px" Margin="Margin.Dense"
+                                 Min="0" Step="0.5m" />
+            }
+            else
+            {
+                <MudText Typo="Typo.body2">@(svc.DeclaredVolume?.ToString("F2") ?? "—") m³</MudText>
+            }
+        }
+    </div>
+    };
 
     /// Conferma la richiesta sopralluogo. La data arriva dallo Slot selezionato (stesso pattern degli altri ServiceBooked).
     /// Crea: (1) Questionnaire template, (2) WorkOrder di Tipo Sopralluogo con QuestionnaireId.
@@ -1774,7 +2102,12 @@
         State.WorkOrders.Add(wo);
         slot.Book(1);
 
-        forService.RichiediSopralluogo(wo.Id, questionnaire.Id);
+        // Questionnaire unico per Quotation (review 2026-04-17): valorizzo solo se non gia' popolato.
+        var parentQuotation = State.Deals.SelectMany(dd => dd.Quotations).FirstOrDefault(qq => qq.Services.Any(sv => sv.Id == forService.Id));
+        if (parentQuotation != null && string.IsNullOrEmpty(parentQuotation.QuestionnaireId))
+            parentQuotation.QuestionnaireId = questionnaire.Id;
+
+        forService.RichiediSopralluogo(wo.Id);
 
         State.EventLog.Add(new WeTacoo.Domain.Events.SopralluogoRichiestoEvent(forService.Id, wo.Id, questionnaire.Id, forService.ServiceAddress?.ZipCode, $"Sopralluogo propedeutico al {forService.Type} — {slot.Date:dd/MM}"));
         State.EventLog.Add(new WeTacoo.Domain.Events.WorkOrderCreatedEvent(wo.Id, "Sopralluogo", "Sopralluogo"));
@@ -1825,6 +2158,50 @@
         });
         _customProductName = "";
         _customProductPrice = 0;
+    }
+
+    /// Aggiunge un Trasloco (Ritiro+Consegna con MovingIds bidirezionali) a una Quotation esistente non accettata.
+    private void AddTraslocoToExistingQuotation(WeTacoo.Domain.Commercial.Entities.Quotation q)
+    {
+        if (q.IsAccepted) return;
+        var ritiro = new WeTacoo.Domain.Commercial.Entities.ServiceBooked
+        {
+            Type = WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Ritiro,
+            ServiceAddress = new WeTacoo.Domain.Commercial.ValueObjects.Address(_inlineSvcZip)
+        };
+        var consegna = new WeTacoo.Domain.Commercial.Entities.ServiceBooked
+        {
+            Type = WeTacoo.Domain.Commercial.Enums.ServiceBookedType.Consegna,
+            ServiceAddress = new WeTacoo.Domain.Commercial.ValueObjects.Address(_inlineSvcZip)
+        };
+        ritiro.MovingIds.Add(consegna.Id);
+        consegna.MovingIds.Add(ritiro.Id);
+        q.Services.Add(ritiro);
+        q.Services.Add(consegna);
+        _inlineSvcZip = "";
+        Snackbar.Add("Trasloco aggiunto: Ritiro ↔ Consegna appaiati (MovingIds)", Severity.Info);
+        State.NotifyStateChanged();
+    }
+
+    /// Aggiunge un Product custom (nome + prezzo manuali) a una Quotation esistente non accettata.
+    private void AddCustomProductToExistingQuotation(WeTacoo.Domain.Commercial.Entities.Quotation q)
+    {
+        if (q.IsAccepted) return;
+        if (string.IsNullOrWhiteSpace(_customProductName) || _customProductPrice <= 0)
+        {
+            Snackbar.Add("Nome e prezzo richiesti per il prodotto custom", Severity.Warning);
+            return;
+        }
+        q.Products.Add(new WeTacoo.Domain.Commercial.Entities.Product
+        {
+            ProductTemplateId = "",
+            Name = _customProductName.Trim(),
+            Description = "",
+            Price = _customProductPrice
+        });
+        _customProductName = "";
+        _customProductPrice = 0;
+        State.NotifyStateChanged();
     }
 
     private void AddProductToExistingQuotation(WeTacoo.Domain.Commercial.Entities.Quotation q)
@@ -1911,6 +2288,20 @@
     /// <summary>Finalizza la quotation e scatena la cascade di accettazione (Questionnaire + WorkOrder + Payment + cascate stati).</summary>
     private void FinalizeAndAccept(WeTacoo.Domain.Commercial.Deal deal, WeTacoo.Domain.Commercial.Entities.Quotation q)
     {
+        // Validazione (review 2026-04-17): ogni SB deve avere data e area prima della finalizzazione
+        var missing = q.Services.Where(s => s.ScheduledDate == null || string.IsNullOrEmpty(s.ServiceAddress?.AreaId)).ToList();
+        if (missing.Count > 0)
+        {
+            var details = string.Join(", ", missing.Select(s =>
+            {
+                var parts = new List<string>();
+                if (s.ScheduledDate == null) parts.Add("data");
+                if (string.IsNullOrEmpty(s.ServiceAddress?.AreaId)) parts.Add("area");
+                return $"{s.Type} ({string.Join("+", parts)})";
+            }));
+            Snackbar.Add($"Impossibile finalizzare: {missing.Count} servizi senza data/area — {details}", Severity.Error);
+            return;
+        }
         q.Finalize();
         AcceptQuotation(deal, q);
     }
@@ -1992,13 +2383,10 @@
                 acceptedQuotation.Id, deal.Id, lead.Id,
                 deal.Type == WeTacoo.Domain.Commercial.Enums.DealType.Recurring));
 
-            // 4. Create Questionnaire + WorkOrder for each ServiceBooked
-            foreach (var svc in acceptedQuotation.Services)
+            // 4a. Questionnaire unico per Quotation (review 2026-04-17): un solo Questionnaire che copre tutti i servizi.
+            //     Lo creiamo una sola volta, non per-ServiceBooked.
+            if (string.IsNullOrEmpty(acceptedQuotation.QuestionnaireId))
             {
-                // ServiceBooked: DaAccettare -> DaCompletare
-                svc.AccettaServizio();
-
-                // Create Questionnaire for the service (uses QuestionTemplates from seed)
                 var questionnaire = new WeTacoo.Domain.Commercial.Questionnaire { Origin = "Quotation" };
                 foreach (var qt in State.QuestionTemplates.Where(q => q.IsActive))
                 {
@@ -2009,15 +2397,24 @@
                     });
                 }
                 State.Questionnaires.Add(questionnaire);
-                svc.QuestionnaireId = questionnaire.Id;
+                acceptedQuotation.QuestionnaireId = questionnaire.Id;
 
                 // Auto-verifica: nessuna domanda attiva
                 bool autoReady = !State.QuestionTemplates.Any(q => q.IsActive);
                 if (autoReady)
                 {
                     questionnaire.IsVerified = true;
-                    svc.SegnaComePronto();
+                    acceptedQuotation.MarkQuestionnaireReady();
                 }
+            }
+
+            var quotationQuestReady = acceptedQuotation.QuestionnaireReady;
+
+            // 4b. WorkOrder per ogni ServiceBooked
+            foreach (var svc in acceptedQuotation.Services)
+            {
+                // ServiceBooked: DaAccettare -> DaCompletare (o Ready se Questionnaire gia' pronto via sopralluogo)
+                svc.AccettaServizio(quotationQuestReady);
 
                 // Create WorkOrder — linked directly via ServiceBookedId
                 var wo = new WeTacoo.Domain.Operational.WorkOrder
@@ -2037,10 +2434,10 @@
                         AreaId: deal.AreaId),
                     ServiceAddress = svc.ServiceAddress?.ZipCode,
                     ContactName = $"{lead.Personal.FirstName} {lead.Personal.LastName}",
-                    EstimatedVolume = deal.ActivePlan?.CurrentM3 ?? 0,
+                    EstimatedVolume = svc.EstimatedVolume > 0 ? svc.EstimatedVolume : (deal.ActivePlan?.CurrentM3 ?? 0),
                     ScheduledDate = svc.ScheduledDate,
                     ScheduledSlot = svc.ScheduledSlot,
-                    Commercial = new WeTacoo.Domain.Operational.ValueObjects.CommercialData(lead.Id, questionnaire.Id, null, [.. svc.MovingIds], hasPlan),
+                    Commercial = new WeTacoo.Domain.Operational.ValueObjects.CommercialData(lead.Id, acceptedQuotation.QuestionnaireId ?? "", null, [.. svc.MovingIds], hasPlan),
                 };
                 State.WorkOrders.Add(wo);
                 svc.WorkOrderId = wo.Id;
@@ -2203,7 +2600,21 @@
                     if (lead != null)
                         clientData = new WeTacoo.Domain.Execution.Entities.ClientData($"{lead.Personal.FirstName} {lead.Personal.LastName}", lead.Personal.Phone ?? "");
                 }
-                shift.AddServiceEntry(wo.Id, dealId, leadId, MapServiceEntryType(wo), clientData);
+                var entry = shift.AddServiceEntry(wo.Id, dealId, leadId, MapServiceEntryType(wo), clientData);
+
+                // Snapshot degli oggetti stimati dal ServiceBooked collegato (DDD5 §2.1, review 2026-04-17)
+                if (!string.IsNullOrEmpty(wo.ServiceBookedId))
+                {
+                    var relatedSvc = State.Deals.SelectMany(d => d.Quotations).SelectMany(q => q.Services)
+                        .FirstOrDefault(s => s.Id == wo.ServiceBookedId);
+                    if (relatedSvc != null)
+                    {
+                        entry.ReferenceItems = relatedSvc.Items
+                            .Select(i => new WeTacoo.Domain.Execution.Entities.ReferenceItem(i.ObjectTemplateId, i.TemplateName, i.Quantity, i.UnitVolume))
+                            .ToList();
+                        entry.ReferenceVolume = relatedSvc.EstimatedVolume;
+                    }
+                }
 
                 if (wo.Status == WeTacoo.Domain.Operational.Enums.WorkOrderStatus.ToSchedule)
                 {
@@ -2499,7 +2910,11 @@
     // ══════════════════════════════════════════════════════════════
     // SEGNALA PROBLEMA -> WorkOrder In Pausa
     // ══════════════════════════════════════════════════════════════
-    private void SegnalaProblema(WeTacoo.Domain.Execution.Shift shift)
+    /// Overload per mantenere backward-compat con OnClick binding esistente.
+    private void SegnalaProblema(WeTacoo.Domain.Execution.Shift shift) => SegnalaProblema(shift, forCommercial: true);
+
+    /// Segnala un problema in corso durante lo Shift. forCommercial=true escala a Sales, false = gestione Ops interna.
+    private void SegnalaProblema(WeTacoo.Domain.Execution.Shift shift, bool forCommercial)
     {
         try
         {
@@ -2511,15 +2926,20 @@
                 if (wo.Status == WeTacoo.Domain.Operational.Enums.WorkOrderStatus.InExecution)
                 {
                     var oldStatus = wo.Status.ToString();
-                    wo.MettiInPausa("Problema segnalato dal team");
-                    State.PublishEvent(new WeTacoo.Domain.Events.WorkOrderStatusChangedEvent(wo.Id, oldStatus, wo.Status.ToString(), "Problema segnalato dal team"));
-                    State.PublishEvent(new WeTacoo.Domain.Events.OperationInterruptedEvent(shift.Id, wo.Id, "Problema segnalato dal team"));
-                    State.PublishEvent(new WeTacoo.Domain.Events.RichiedeInterventoEvent(wo.Id, wo.ServiceBookedId, "Problema segnalato dal team operativo"));
+                    var motivo = forCommercial ? "Problema segnalato dal team (serve Commercial)" : "Problema segnalato dal team (gestione Ops)";
+                    wo.MettiInPausa(motivo, forCommercial);
+                    State.PublishEvent(new WeTacoo.Domain.Events.WorkOrderStatusChangedEvent(wo.Id, oldStatus, wo.Status.ToString(), motivo));
+                    State.PublishEvent(new WeTacoo.Domain.Events.OperationInterruptedEvent(shift.Id, wo.Id, motivo));
+                    if (forCommercial)
+                        State.PublishEvent(new WeTacoo.Domain.Events.RichiedeInterventoEvent(wo.Id, wo.ServiceBookedId, motivo));
                 }
             }
             // Pausa anche lo Shift per coerenza con WO InPausa
             shift.Pause();
-            Snackbar.Add("Problema segnalato, Shift e WorkOrder in pausa — intervento Commercial richiesto", Severity.Warning);
+            var msg = forCommercial
+                ? "Problema segnalato, Shift e WorkOrder in pausa — intervento Commercial richiesto"
+                : "Problema segnalato, Shift e WorkOrder in pausa — gestione interna Ops";
+            Snackbar.Add(msg, forCommercial ? Severity.Warning : Severity.Info);
             State.NotifyStateChanged();
         }
         catch (Exception ex)
@@ -2594,6 +3014,25 @@
     }
 
     // ══════════════════════════════════════════════════════════════
+    // NON PROGRAMMABILE — da Operational rimanda SEMPRE a Commercial (review 2026-04-17 finale).
+    // Commercial puo' annullare il preventivo o rilasciare a Ops con nota (es. condizioni rinegoziate).
+    // La scelta Ops-vs-Commercial esiste solo per problemi in corso di Execution (SegnalaProblema).
+    // ══════════════════════════════════════════════════════════════
+    private string? _nonProgrammabileWoId;
+    private string _nonProgrammabileMotivo = "";
+
+    private void ConfirmNonProgrammabile(WeTacoo.Domain.Operational.WorkOrder wo)
+    {
+        var motivo = string.IsNullOrWhiteSpace(_nonProgrammabileMotivo) ? "Non programmabile" : _nonProgrammabileMotivo.Trim();
+        wo.NonProgrammabile(motivo, forCommercial: true);
+        State.PublishEvent(new WeTacoo.Domain.Events.RichiedeInterventoEvent(wo.Id, wo.ServiceBookedId, motivo));
+        Snackbar.Add($"WO {wo.Id.Substring(0, Math.Min(8, wo.Id.Length))} → In pausa — Commercial deve decidere (cancella o rinegoziamento)", Severity.Warning);
+        _nonProgrammabileWoId = null;
+        _nonProgrammabileMotivo = "";
+        State.NotifyStateChanged();
+    }
+
+    // ══════════════════════════════════════════════════════════════
     // INTERVENTO RISOLTO — Commercial sblocca WorkOrder da In pausa
     // ══════════════════════════════════════════════════════════════
     private readonly Dictionary<string, string> _interventoNotes = new();
@@ -2620,6 +3059,27 @@
         return null;
     }
 
+    // ── Gestione Ops interna: Riprogramma/Riprendi quando PausedForCommercial=false (review 2026-04-17) ──
+    // Shift opzionale: NonProgrammabile da ToSchedule non ha Shift associato.
+    private void ResolveOpsInternalRiprogramma(WeTacoo.Domain.Operational.WorkOrder wo, WeTacoo.Domain.Execution.Shift? shift)
+    {
+        wo.InterventoRisoltoRiprogramma("Riprogrammato internamente da Ops");
+        // SB invariato (resta Ready) — gestione interna non tocca Commercial
+        if (shift != null && shift.Status == "Paused") shift.Status = "Suspended";
+        State.PublishEvent(new WeTacoo.Domain.Events.WorkOrderStatusChangedEvent(wo.Id, "Paused", "ToSchedule", "Ops Riprogramma interna"));
+        Snackbar.Add($"WO {wo.Id.Substring(0, Math.Min(8, wo.Id.Length))} → Da programmare (Ops)", Severity.Info);
+        State.NotifyStateChanged();
+    }
+
+    private void ResolveOpsInternalRiprendi(WeTacoo.Domain.Operational.WorkOrder wo, WeTacoo.Domain.Execution.Shift? shift)
+    {
+        wo.InterventoRisoltoRiprendi("Ripresa esecuzione da Ops");
+        if (shift != null && shift.Status == "Paused") shift.Resume();
+        State.PublishEvent(new WeTacoo.Domain.Events.WorkOrderStatusChangedEvent(wo.Id, "Paused", "InExecution", "Ops Riprendi interna"));
+        Snackbar.Add($"WO {wo.Id.Substring(0, Math.Min(8, wo.Id.Length))} → In esecuzione (Ops)", Severity.Info);
+        State.NotifyStateChanged();
+    }
+
     private void ResolveWoRiprogramma(WeTacoo.Domain.Operational.WorkOrder wo)
     {
         var note = GetInterventoNote(wo.Id);
@@ -2631,18 +3091,35 @@
         State.NotifyStateChanged();
     }
 
+    // Commercial "Riprendi servizio" (review 2026-04-17): torna allo stato PRECEDENTE alla pausa, letto da StatusHistory.
+    // Se prima della pausa era InExecution (problema in corso) -> rimette in InExecution e riattiva Shift.
+    // Se era ToSchedule (NonProgrammabile pre-esecuzione) -> rimanda a Ops con ToSchedule per nuova pianificazione.
     private void ResolveWoRiprendi(WeTacoo.Domain.Operational.WorkOrder wo)
     {
         var note = GetInterventoNote(wo.Id);
-        wo.InterventoRisoltoRiprendi(note);
-        FindServiceForWo(wo)?.InterventoRisolto();
-        // Riattiva gli Shift in pausa collegati al WO
-        foreach (var sh in State.Shifts.Where(s => s.Status == "Paused" && s.ServiceEntries.Any(se => se.ServiceId == wo.Id)))
+        // Cerca l'ultimo stato "X -> Paused" nella storia per sapere dove tornare
+        var pauseEntry = wo.StatusHistory.LastOrDefault(h => h.Contains("-> Paused"));
+        var previousWasInExecution = pauseEntry != null && pauseEntry.Contains("InExecution -> Paused");
+
+        if (previousWasInExecution)
         {
-            sh.Resume();
+            wo.InterventoRisoltoRiprendi(note);
+            // Riattiva gli Shift in pausa collegati al WO
+            foreach (var sh in State.Shifts.Where(s => s.Status == "Paused" && s.ServiceEntries.Any(se => se.ServiceId == wo.Id)))
+            {
+                sh.Resume();
+            }
+            Snackbar.Add($"WO {wo.Id.Substring(0, Math.Min(8, wo.Id.Length))} → In esecuzione — Shift riattivati", Severity.Warning);
         }
+        else
+        {
+            // Prima era ToSchedule (NonProgrammabile) -> rilascia a Ops per nuova pianificazione
+            wo.InterventoRisoltoRiprogramma(note);
+            Snackbar.Add($"WO {wo.Id.Substring(0, Math.Min(8, wo.Id.Length))} → Da programmare — Ops riprova con condizioni approvate: {note}", Severity.Info);
+        }
+
+        FindServiceForWo(wo)?.InterventoRisolto();
         State.PublishEvent(new WeTacoo.Domain.Events.InterventoRisoltoEvent(wo.Id, "Riprendi", note));
-        Snackbar.Add($"WO {wo.Id} ripreso in esecuzione — Shift riattivati", Severity.Warning);
         _interventoNotes.Remove(wo.Id);
         State.NotifyStateChanged();
     }
@@ -2653,6 +3130,102 @@
         wo.InterventoRisoltoChiudi(note);
         State.PublishEvent(new WeTacoo.Domain.Events.InterventoRisoltoEvent(wo.Id, "Chiudi", note));
         Snackbar.Add($"WO {wo.Id} portato a Da verificare — Ops verifichera' i dati effettivi", Severity.Success);
+        _interventoNotes.Remove(wo.Id);
+        State.NotifyStateChanged();
+    }
+
+    /// Annulla l'intero preventivo da Paused (§10d Caso 4, review 2026-04-17).
+    /// Policy: la Quotation e' un'entita' commerciale unitaria. Annullare il servizio in pausa
+    /// cascade su TUTTI i SB della stessa Quotation + WO associati + WO sopralluogo collegati.
+    /// Aggiorna Quotation (Archive se Draft/InProgress, Cancel se Finalized/ToVerify) e Deal
+    /// (Discard se non ancora Converted, Cancel se Converted) quando tutte le Quotation sono terminali.
+    private void AnnullaWoDaPausa(WeTacoo.Domain.Operational.WorkOrder wo, WeTacoo.Domain.Commercial.Entities.ServiceBooked? svc)
+    {
+        var note = GetInterventoNote(wo.Id);
+        var quotation = State.Deals.SelectMany(d => d.Quotations)
+            .FirstOrDefault(q => q.Services.Any(s => s.Id == svc?.Id || s.Id == wo.ServiceBookedId));
+        var deal = quotation != null ? State.Deals.FirstOrDefault(d => d.Quotations.Contains(quotation)) : null;
+
+        if (quotation == null)
+        {
+            // fallback: annulla solo questo SB+WO come prima
+            svc?.Annulla();
+            wo.Annulla(string.IsNullOrWhiteSpace(note) ? "Commercial" : $"Commercial: {note}");
+            State.PublishEvent(new WeTacoo.Domain.Events.ServizioCancellatoEvent(svc?.Id ?? "", wo.Id));
+            Snackbar.Add($"Servizio {svc?.Type} annullato (fallback)", Severity.Error);
+            State.NotifyStateChanged();
+            return;
+        }
+
+        int cancelledServices = 0;
+        var reason = string.IsNullOrWhiteSpace(note) ? "Commercial" : $"Commercial: {note}";
+
+        foreach (var s in quotation.Services.ToList())
+        {
+            // Salto servizi gia' terminali
+            if (s.Status is WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.Cancelled
+                         or WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.Completed) continue;
+
+            // Annulla eventuale WO Sopralluogo collegato (InspectionId)
+            if (!string.IsNullOrEmpty(s.InspectionId))
+            {
+                var insWo = State.WorkOrders.FirstOrDefault(w => w.Id == s.InspectionId);
+                if (insWo != null && insWo.Status is not (WeTacoo.Domain.Operational.Enums.WorkOrderStatus.Concluded
+                                                         or WeTacoo.Domain.Operational.Enums.WorkOrderStatus.Cancelled))
+                    insWo.Annulla(reason);
+            }
+
+            // Annulla WO commerciale collegato
+            if (!string.IsNullOrEmpty(s.WorkOrderId))
+            {
+                var cwo = State.WorkOrders.FirstOrDefault(w => w.Id == s.WorkOrderId);
+                if (cwo != null && cwo.Status is not (WeTacoo.Domain.Operational.Enums.WorkOrderStatus.Concluded
+                                                     or WeTacoo.Domain.Operational.Enums.WorkOrderStatus.Cancelled))
+                {
+                    cwo.Annulla(reason);
+                    // Shift collegati
+                    foreach (var sh in State.Shifts.Where(sh => sh.ServiceEntries.Any(se => se.ServiceId == cwo.Id)))
+                    {
+                        if (sh.Status == "Created") sh.Status = "Cancelled";
+                        else if (sh.Status is "InProgress" or "Paused") sh.Status = "Suspended";
+                    }
+                    State.PublishEvent(new WeTacoo.Domain.Events.ServizioCancellatoEvent(s.Id, cwo.Id));
+                }
+            }
+
+            s.Annulla();
+            cancelledServices++;
+        }
+
+        // Aggiorna Quotation
+        var qStatus = quotation.Status;
+        if (qStatus is WeTacoo.Domain.Commercial.Enums.QuotationStatus.Draft
+                    or WeTacoo.Domain.Commercial.Enums.QuotationStatus.InProgress)
+            quotation.Archive();
+        else if (qStatus is WeTacoo.Domain.Commercial.Enums.QuotationStatus.Finalized
+                         or WeTacoo.Domain.Commercial.Enums.QuotationStatus.ToVerify)
+            quotation.Cancel();
+
+        // Aggiorna Deal se tutte le Quotation sono terminali negative
+        if (deal != null)
+        {
+            // Rimuovi ActivePlan se generato da questa Quotation (no-op altrimenti)
+            deal.OnQuotationCancelled(quotation.Id);
+            bool allTerminal = deal.Quotations.All(x => x.Status is WeTacoo.Domain.Commercial.Enums.QuotationStatus.Archived
+                                                                  or WeTacoo.Domain.Commercial.Enums.QuotationStatus.Cancelled);
+            if (allTerminal)
+            {
+                var dStatus = deal.Status;
+                if (dStatus is WeTacoo.Domain.Commercial.Enums.DealStatus.ToQualify
+                            or WeTacoo.Domain.Commercial.Enums.DealStatus.Qualified
+                            or WeTacoo.Domain.Commercial.Enums.DealStatus.InNegotiation)
+                    deal.Discard();
+                else if (dStatus == WeTacoo.Domain.Commercial.Enums.DealStatus.Converted)
+                    deal.Cancel();
+            }
+        }
+
+        Snackbar.Add($"Preventivo annullato — {cancelledServices} servizi cancellati, Quotation {quotation.Status}, Deal {deal?.Status}", Severity.Error);
         _interventoNotes.Remove(wo.Id);
         State.NotifyStateChanged();
     }
@@ -2747,19 +3320,32 @@
     }
 
     // ══════════════════════════════════════════════════════════════
-    // QUESTIONNAIRE — Compile + Verify -> ServiceBooked Pronto + WO ready
+    // QUESTIONNAIRE — Verify Quotation (unico per Quotation, review 2026-04-17) -> tutti i SB in ToComplete vanno a Ready
     // ══════════════════════════════════════════════════════════════
+    private void VerifyQuotationQuestionnaire(WeTacoo.Domain.Commercial.Entities.Quotation quotation, WeTacoo.Domain.Commercial.Questionnaire questionnaire)
+    {
+        // Marca verificato anche se non tutte le domande sono compilate (comportamento storico "un solo pulsante").
+        questionnaire.IsVerified = true;
+        quotation.MarkQuestionnaireReady();
+
+        // Tutti i SB in ToComplete -> Pronto; emetti ServizioProntoEvent per ciascuno
+        foreach (var svc in quotation.Services.Where(s => s.Status == WeTacoo.Domain.Commercial.Enums.ServiceBookedStatus.ToComplete))
+        {
+            svc.SegnaComePronto();
+            if (!string.IsNullOrEmpty(svc.WorkOrderId))
+                State.PublishEvent(new WeTacoo.Domain.Events.ServizioProntoEvent(svc.Id, svc.WorkOrderId));
+        }
+
+        Snackbar.Add("Questionario verificato — tutti i servizi in ToComplete portati a Pronto", Severity.Success);
+        State.NotifyStateChanged();
+    }
+
+    // Retrocompat con vecchi callsite (deprecato, lascia per sicurezza)
     private void VerifyQuestionnaireAndReady(WeTacoo.Domain.Commercial.Questionnaire questionnaire, WeTacoo.Domain.Commercial.Entities.ServiceBooked svc, WeTacoo.Domain.Operational.WorkOrder wo)
     {
         questionnaire.IsVerified = true;
-
-        // ServiceBooked: DaCompletare -> Pronto
         svc.SegnaComePronto();
-
-        // Publish ServizioProntoEvent -> WO: InCompletamento -> DaProgrammare
         State.PublishEvent(new WeTacoo.Domain.Events.ServizioProntoEvent(svc.Id, wo.Id));
-
-        Snackbar.Add("Questionario verificato — servizio pronto per programmazione", Severity.Success);
         State.NotifyStateChanged();
     }
 
@@ -2922,7 +3508,19 @@
                                     $"{lead.Personal.FirstName} {lead.Personal.LastName}", lead.Personal.Phone ?? "");
                         }
                         var entryType = MapServiceEntryType(wo);
-                        existingShift.AddServiceEntry(wo.Id, dealId, leadId, entryType, clientData);
+                        var entry = existingShift.AddServiceEntry(wo.Id, dealId, leadId, entryType, clientData);
+                        if (!string.IsNullOrEmpty(wo.ServiceBookedId))
+                        {
+                            var relatedSvc = State.Deals.SelectMany(d => d.Quotations).SelectMany(q => q.Services)
+                                .FirstOrDefault(s => s.Id == wo.ServiceBookedId);
+                            if (relatedSvc != null)
+                            {
+                                entry.ReferenceItems = relatedSvc.Items
+                                    .Select(i => new WeTacoo.Domain.Execution.Entities.ReferenceItem(i.ObjectTemplateId, i.TemplateName, i.Quantity, i.UnitVolume))
+                                    .ToList();
+                                entry.ReferenceVolume = relatedSvc.EstimatedVolume;
+                            }
+                        }
                     }
 
                     Snackbar.Add($"WO assegnato a Mission {mission.Id}", Severity.Success);
@@ -3046,21 +3644,28 @@
     // ══════════════════════════════════════════════════════════════
     private List<WeTacoo.Domain.Operational.WorkOrder> GetScheduledUnassignedWOs()
     {
+        // WO del Lead corrente (venduti via Quotation)
         var leadWos = GetLeadWorkOrders().Where(w =>
             w.Status is WeTacoo.Domain.Operational.Enums.WorkOrderStatus.ToSchedule
                 or WeTacoo.Domain.Operational.Enums.WorkOrderStatus.Scheduled
         );
-        // WO operativi (Type = Operational) senza lead — sempre visibili per la pianificazione
-        var opsWos = State.WorkOrders.Where(w =>
-            w.Type == WeTacoo.Domain.Operational.Enums.WorkOrderType.Operational
+        // WO operativi (Type = Operational) — SEMPRE visibili tra i servizi programmabili del giorno,
+        // indipendentemente dal Lead selezionato (DDD5: Operational crea WO autonomi per trasferimenti/trasbordi).
+        // Anche WO tipo Sopralluogo (creati da Richiedi sopralluogo): sempre visibili per programmazione.
+        var opsAndSopralluogoWos = State.WorkOrders.Where(w =>
+            (w.Type == WeTacoo.Domain.Operational.Enums.WorkOrderType.Operational
+             || w.Type == WeTacoo.Domain.Operational.Enums.WorkOrderType.Sopralluogo)
             && w.Status is WeTacoo.Domain.Operational.Enums.WorkOrderStatus.ToSchedule
                 or WeTacoo.Domain.Operational.Enums.WorkOrderStatus.Scheduled
         );
-        return leadWos.Concat(opsWos).Distinct().ToList();
+        // Ops/Sopralluogo per primi (evidenti), poi Lead WO
+        return opsAndSopralluogoWos.Concat(leadWos).Distinct().ToList();
     }
 
     private bool HasAnyOpsWoToPlan()
-        => State.WorkOrders.Any(w => w.Type == WeTacoo.Domain.Operational.Enums.WorkOrderType.Operational
+        => State.WorkOrders.Any(w =>
+            (w.Type == WeTacoo.Domain.Operational.Enums.WorkOrderType.Operational
+             || w.Type == WeTacoo.Domain.Operational.Enums.WorkOrderType.Sopralluogo)
             && w.Status is WeTacoo.Domain.Operational.Enums.WorkOrderStatus.ToSchedule
                 or WeTacoo.Domain.Operational.Enums.WorkOrderStatus.Scheduled);
 

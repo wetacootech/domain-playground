@@ -192,9 +192,13 @@ public class PlaygroundState
                         if (!allDone) break;
 
                         // Quotation: Finalizzato -> Completato o DaAdeguare
+                        // Fix (review 2026-04-17): la decisione si basa sull'aggregato di TUTTI i SB della Quotation.
+                        // Se qualcuno ha registrato CompletionData (= ha avuto differenze durante l'esecuzione),
+                        // la Quotation va in ToAdjust, non Completato — a prescindere dall'ultimo evento.
                         if (q.Status == QuotationStatus.Finalized)
                         {
-                            if (e.HasDifferences) q.MarkToAdjust();
+                            bool anyHasDifferences = q.Services.Any(s => s.CompletionData != null);
+                            if (anyHasDifferences) q.MarkToAdjust();
                             else q.Complete();
                         }
 

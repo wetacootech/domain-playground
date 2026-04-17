@@ -311,10 +311,10 @@ public class EntityAdminService
     public void DeleteQuestionnaire(string id)
     {
         _state.Questionnaires.RemoveAll(q => q.Id == id);
+        // Questionnaire unico per Quotation (review 2026-04-17): cascade su Quotation, non su SB.
         foreach (var deal in _state.Deals)
-            foreach (var q in deal.Quotations)
-                foreach (var svc in q.Services.Where(s => s.QuestionnaireId == id))
-                    svc.QuestionnaireId = null;
+            foreach (var q in deal.Quotations.Where(qq => qq.QuestionnaireId == id))
+                q.QuestionnaireId = null;
     }
 
     // ═══════════════════════════════════════════════════════════

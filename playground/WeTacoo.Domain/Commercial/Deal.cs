@@ -102,4 +102,17 @@ public class Deal : AggregateRoot
         if (Status == DealStatus.Converted)
             SetStatus(DealStatus.Cancelled);
     }
+
+    /// <summary>
+    /// Quotation che ha generato l'ActivePlan e' stata cancellata/archiviata (DDD5 §10d cascade,
+    /// review 2026-04-17): l'ActivePlan non ha piu' contratto di riferimento -> viene rimosso.
+    /// No-op se l'ActivePlan non e' collegato a quella Quotation (caso di Deal multi-Quotation).
+    /// </summary>
+    public void OnQuotationCancelled(string quotationId)
+    {
+        if (ActivePlan == null) return;
+        if (ActivePlan.QuotationId != quotationId) return;
+        ActivePlan = null;
+        Touch();
+    }
 }

@@ -50,13 +50,11 @@ public class UC5_SopralluogoTests
     {
         var svc = new ServiceBooked { Type = ServiceBookedType.Ritiro };
         var wo = new WorkOrder { Type = WorkOrderType.Sopralluogo };
-        var quest = new Questionnaire { Origin = "Sopralluogo" };
 
-        svc.RichiediSopralluogo(wo.Id, quest.Id);
+        svc.RichiediSopralluogo(wo.Id);
 
         Assert.Equal(ServiceBookedStatus.WaitingInspection, svc.Status);
         Assert.Equal(wo.Id, svc.InspectionId);
-        Assert.Equal(quest.Id, svc.QuestionnaireId);
     }
 
     [Fact]
@@ -64,7 +62,7 @@ public class UC5_SopralluogoTests
     {
         var svc = new ServiceBooked { Type = ServiceBookedType.Ritiro };
         svc.AccettaServizio(); // ToComplete
-        svc.RichiediSopralluogo("wo-1", "q-1");
+        svc.RichiediSopralluogo("wo-1");
 
         Assert.Equal(ServiceBookedStatus.ToComplete, svc.Status);
         Assert.Null(svc.InspectionId);
@@ -74,7 +72,7 @@ public class UC5_SopralluogoTests
     public void Step5_SopralluogoCompletato_ReturnsToAccept()
     {
         var svc = new ServiceBooked { Type = ServiceBookedType.Ritiro };
-        svc.RichiediSopralluogo("wo-1", "q-1");
+        svc.RichiediSopralluogo("wo-1");
         Assert.Equal(ServiceBookedStatus.WaitingInspection, svc.Status);
 
         svc.SopralluogoCompletato();
@@ -119,7 +117,7 @@ public class UC5_SopralluogoTests
     {
         var svc = new ServiceBooked { Type = ServiceBookedType.Ritiro };
         var wo = new WorkOrder { Type = WorkOrderType.Sopralluogo };
-        svc.RichiediSopralluogo(wo.Id, "q-1");
+        svc.RichiediSopralluogo(wo.Id);
 
         // Simula esecuzione completa del WO
         wo.ServizioPronto("Commercial");
@@ -175,23 +173,24 @@ public class UC5_SopralluogoTests
         Assert.Equal(QuotationStatus.InProgress, q.Status);
 
         var woInsp = new WorkOrder { Type = WorkOrderType.Sopralluogo };
-        svc.RichiediSopralluogo(woInsp.Id, "quest-1");
+        q.QuestionnaireId = "quest-1"; // Questionnaire unico per Quotation (review 2026-04-17)
+        svc.RichiediSopralluogo(woInsp.Id);
         Assert.Equal(ServiceBookedStatus.WaitingInspection, svc.Status);
 
         // ... simulazione WO eseguito ...
         svc.SopralluogoCompletato();
+        q.MarkQuestionnaireReady();
         Assert.Equal(ServiceBookedStatus.ToAccept, svc.Status);
-        Assert.True(svc.QuestionnaireReady);
+        Assert.True(q.QuestionnaireReady);
 
         // Sales rinegozia prezzo
         q.Products.Clear();
         q.Products.Add(new Product { Name = "Ritiro (28m3 reali)", Price = 650m });
         Assert.Equal(650m, q.TotalPrice);
 
-        // Cliente accetta. Con sopralluogo gia' eseguito il Questionnaire e' pronto:
-        // AccettaServizio salta ToComplete e porta direttamente a Ready.
+        // Cliente accetta. Con Quotation.QuestionnaireReady=true il ServiceBooked salta ToComplete e va a Ready.
         q.Finalize();
-        svc.AccettaServizio();
+        svc.AccettaServizio(q.QuestionnaireReady);
         Assert.Equal(QuotationStatus.Finalized, q.Status);
         Assert.Equal(ServiceBookedStatus.Ready, svc.Status);
         Assert.Equal(woInsp.Id, svc.InspectionId);
@@ -202,7 +201,6 @@ public class UC5_SopralluogoTests
     {
         // Controllo di regressione: senza sopralluogo, AccettaServizio continua ad andare a ToComplete.
         var svc = new ServiceBooked { Type = ServiceBookedType.Ritiro };
-        Assert.False(svc.QuestionnaireReady);
         svc.AccettaServizio();
         Assert.Equal(ServiceBookedStatus.ToComplete, svc.Status);
     }
